@@ -98,14 +98,22 @@ export const Hero: React.FC<HeroProps> = ({ onSelectTrack, onNavigateSection }) 
 
         {/* Enlarged Prominent Slideshow View */}
         <div className="space-y-4">
-          <div className="relative aspect-[16/10] sm:aspect-[16/9] lg:aspect-[2.1/1] min-h-[340px] sm:min-h-[440px] lg:min-h-[540px] max-h-[680px] w-full rounded-3xl overflow-hidden shadow-2xl border border-neutral-800/90 bg-neutral-950 group">
+          <div className="relative aspect-[16/10] sm:aspect-[16/9] lg:aspect-[2.1/1] min-h-[340px] sm:min-h-[440px] lg:min-h-[540px] max-h-[680px] w-full rounded-3xl overflow-hidden shadow-2xl border border-neutral-800 bg-neutral-900 group">
             <img
               src={activeSlide.url}
               alt={activeSlide.title}
               referrerPolicy="no-referrer"
               className="w-full h-full object-cover object-center transition-all duration-700 group-hover:scale-102"
+              onError={(e) => {
+                const target = e.target as HTMLImageElement;
+                if (!target.src.includes('slide_01')) {
+                  target.src = '/images/slide_01.jpg';
+                }
+              }}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent"></div>
+            {/* Soft gradient only at top and bottom to ensure full image visibility */}
+            <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-neutral-950/90 via-neutral-950/40 to-transparent pointer-events-none"></div>
+            <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-neutral-950/60 to-transparent pointer-events-none"></div>
 
             {/* Top Toolbar Overlay */}
             <div className="absolute top-4 left-4 right-4 flex items-center justify-between z-10">

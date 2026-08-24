@@ -336,14 +336,22 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
               </div>
             ) : (
               /* Album Cover Art & Band Image Slideshow */
-              <div className="relative aspect-square rounded-2xl overflow-hidden group shadow-2xl border border-neutral-800 bg-neutral-950">
+              <div className="relative aspect-square rounded-2xl overflow-hidden group shadow-2xl border border-neutral-800 bg-neutral-900">
                 <img
                   src={activeSlide.url}
                   alt={activeSlide.title}
                   referrerPolicy="no-referrer"
                   className={`w-full h-full object-cover transition-all duration-700 ${isPlaying ? 'scale-105' : 'scale-100'}`}
+                  onError={(e) => {
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes('slide_01')) {
+                      target.src = '/images/slide_01.jpg';
+                    }
+                  }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-neutral-950/40 opacity-90"></div>
+                {/* Soft gradient to keep photo vibrant while text is legible */}
+                <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-neutral-950/95 via-neutral-950/50 to-transparent pointer-events-none"></div>
+                <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-neutral-950/70 to-transparent pointer-events-none"></div>
 
                 {/* Top Bar Controls Overlay */}
                 <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-1.5 z-10">

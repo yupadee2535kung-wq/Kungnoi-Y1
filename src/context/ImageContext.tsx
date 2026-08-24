@@ -21,15 +21,6 @@ export interface SlideshowItem {
   description?: string;
 }
 
-const DEFAULT_IMAGES: KungnoiImageMap = {
-  albumCover: DEFAULT_SLIDES_PRESETS[0]?.url || '',
-  heroBanner: DEFAULT_SLIDES_PRESETS[2]?.url || '',
-};
-
-const STORAGE_KEY = 'kungnoi_y_custom_images_v25';
-const CUSTOM_SLIDES_STORAGE_KEY = 'kungnoi_y_custom_slideshow_v25';
-const HIDDEN_SLIDES_STORAGE_KEY = 'kungnoi_y_hidden_slides_v25';
-
 export interface ImageContextType {
   images: KungnoiImageMap;
   updateImage: (key: keyof KungnoiImageMap, url: string) => Promise<void>;
@@ -41,7 +32,6 @@ export interface ImageContextType {
   activeEditingTarget: keyof KungnoiImageMap;
   setActiveEditingTarget: (key: keyof KungnoiImageMap) => void;
 
-  // Slideshow management (Supports 10+ photos & presets)
   slideshowList: SlideshowItem[];
   addCustomSlide: (title: string, subtitle: string, url: string, tag?: string) => Promise<void>;
   addPresetToSlideshow: (presetId: string) => void;
@@ -49,6 +39,34 @@ export interface ImageContextType {
   deleteSlide: (id: string) => void;
   moveSlide: (index: number, direction: 'up' | 'down') => void;
   resetSlideshowList: () => void;
+}
+
+const DEFAULT_IMAGES: KungnoiImageMap = {
+  albumCover: DEFAULT_SLIDES_PRESETS[0]?.url || '',
+  heroBanner: DEFAULT_SLIDES_PRESETS[2]?.url || '',
+};
+
+const STORAGE_KEY = 'kungnoi_y_custom_images_v30';
+const SLIDESHOW_STORAGE_KEY = 'kungnoi_y_slideshow_v30';
+
+// Clear out old conflicting localStorages from previous versions
+if (typeof window !== 'undefined') {
+  try {
+    const oldKeys = [
+      'kungnoi_y_custom_images_v25',
+      'kungnoi_y_custom_slideshow_v25',
+      'kungnoi_y_hidden_slides_v25',
+      'kungnoi_y_slideshow_v25',
+      'kungnoi_y_custom_images_v20',
+      'kungnoi_y_slideshow_v20',
+      'triplets_band_custom_images_v10',
+      'triplets_band_slideshow_v10',
+      'triplets_band_slideshow_v15'
+    ];
+    oldKeys.forEach(k => localStorage.removeItem(k));
+  } catch {
+    // Ignored
+  }
 }
 
 const ImageContext = createContext<ImageContextType | undefined>(undefined);
@@ -67,8 +85,6 @@ export const PRESET_LIBRARY: Record<keyof KungnoiImageMap, { id: string; name: s
     tag: preset.tag
   })),
 };
-
-const SLIDESHOW_STORAGE_KEY = 'kungnoi_y_slideshow_v25';
 
 export const ImageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [images, setImages] = useState<KungnoiImageMap>(() => {
