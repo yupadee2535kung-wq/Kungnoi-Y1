@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered, Upload } from 'lucide-react';
 import { ALBUM_INFO } from '../data/bandData';
 import { Song } from '../types';
 import { useSongs } from '../context/SongContext';
@@ -31,7 +31,31 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     toggleShuffle,
     seek,
     setVolume,
+    uploadSongAudio,
   } = useSongs();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploadTargetSongId, setUploadTargetSongId] = useState<string | null>(null);
+  const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
+
+  const handleAudioFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadTargetSongId) return;
+
+    const success = await uploadSongAudio(uploadTargetSongId, file);
+    if (success) {
+      setUploadSuccessMsg('อัปโหลดไฟล์เสียงสำเร็จแล้ว!');
+      setTimeout(() => setUploadSuccessMsg(null), 3000);
+    }
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
+  const triggerUploadForSong = (songId: string) => {
+    setUploadTargetSongId(songId);
+    fileInputRef.current?.click();
+  };
 
   const currentTrackId = propCurrentTrackId || contextTrackId;
   const onSelectTrack = (id: string) => {
@@ -518,21 +542,46 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 }`}></div>
               </div>
 
-              {/* Master Audio Format Badge */}
+              {/* Master Audio Format Badge & Quick Upload Button */}
               <div className="pt-1 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800/60 text-[11px] font-mono text-neutral-400">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center flex-wrap gap-2">
                   <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
                     <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>High-Fidelity Stereo Audio</span>
+                    <span>{isUsingRealAudio ? 'ไฟล์เสียง MP3 ในเครื่อง' : 'ระบบเสียงสังเคราะห์สตูดิโอ (Synth)'}</span>
                   </span>
                   <span className="text-neutral-500 hidden sm:inline">•</span>
-                  <span className="text-neutral-400 hidden sm:inline">10 Official Studio Tracks</span>
+                  <button
+                    type="button"
+                    onClick={() => triggerUploadForSong(activeSong.id)}
+                    className="text-[10px] bg-neutral-900 hover:bg-neutral-800 text-amber-300 hover:text-white border border-neutral-700 hover:border-amber-500 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors"
+                    title="อัปโหลดไฟล์เพลง MP3 สำหรับเพลงนี้"
+                  >
+                    <Upload className="w-3 h-3 text-amber-400" />
+                    <span>อัปโหลด MP3 เพลงนี้</span>
+                  </button>
                 </div>
                 <span className="text-[10px] text-red-400 font-bold bg-red-950/40 border border-red-900/50 px-2 py-0.5 rounded">
                   TRIPLETS RECORD
                 </span>
               </div>
+
+              {/* Upload Success Alert */}
+              {uploadSuccessMsg && (
+                <div className="bg-emerald-950/90 border border-emerald-600 text-emerald-300 text-xs px-3 py-1.5 rounded-xl flex items-center gap-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>{uploadSuccessMsg}</span>
+                </div>
+              )}
             </div>
+
+            {/* Hidden Audio File Input */}
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleAudioFileChange}
+              accept="audio/*,.mp3,.wav,.ogg,.m4a,.flac"
+              className="hidden"
+            />
 
             {/* Track Timeline Seek Bar */}
             <div className="space-y-1.5">
@@ -759,7 +808,19 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2 sm:gap-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            triggerUploadForSong(song.id);
+                          }}
+                          className="p-1.5 rounded-lg text-neutral-500 hover:text-amber-300 hover:bg-neutral-800 transition-colors opacity-60 hover:opacity-100 cursor-pointer"
+                          title="อัปโหลดไฟล์ MP3 สำหรับเพลงนี้"
+                        >
+                          <Upload className="w-3.5 h-3.5" />
+                        </button>
+
                         <span className="text-xs font-mono text-neutral-400">{song.duration}</span>
 
                         <button

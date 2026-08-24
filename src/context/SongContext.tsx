@@ -348,21 +348,13 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const togglePlayPause = (songId?: string) => {
     const targetId = songId || currentTrackId;
-    const target = songs.find(s => s.id === targetId) || songs[0];
+    const target = songsRef.current.find(s => s.id === targetId) || songsRef.current[0];
     if (!target) return;
 
     if (isPlaying && currentTrackId === targetId) {
       audioSynth.pause();
     } else {
-      setCurrentTrackId(target.id);
-      audioSynth.playTrack(
-        target.id,
-        target.durationSeconds,
-        target.audioParams?.rootNote || 57,
-        target.audioParams?.bpm || 118,
-        target.audioParams?.style || 'melancholic_rock',
-        target.audioUrl
-      );
+      playTrackById(target.id);
     }
   };
 

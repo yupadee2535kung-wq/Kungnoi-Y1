@@ -6,27 +6,32 @@
 
 import { getAudioBlobUrl } from './audioStorage';
 
+// Conversion: MIDI Note number to Frequency in Hz
+function midiToFreq(note: number): number {
+  return 440 * Math.pow(2, (note - 69) / 12);
+}
+
 class AudioSynthEngine {
   private ctx: AudioContext | null = null;
   private isPlaying = false;
   private currentTrackId: string | null = null;
   private currentTime = 0;
-  private duration = 268; // default
+  private duration = 240; // default
   private volume = 0.8;
   private intervalId: number | null = null;
   private masterGain: GainNode | null = null;
   public analyser: AnalyserNode | null = null;
   private listeners: Set<() => void> = new Set();
   private chordTimer: number | null = null;
+  private beatTimer: number | null = null;
+  private activeVoices: { osc: OscillatorNode; gain: GainNode }[] = [];
 
   // Real Audio Element playback for MP3/WAV audio files
   private audioElement: HTMLAudioElement | null = null;
-  private mediaSourceNode: MediaElementAudioSourceNode | null = null;
   private activeAudioUrl: string | null = null;
   private objectUrlToRevoke: string | null = null;
   private isUsingRealAudio = false;
   private onEndedCallback: (() => void) | null = null;
-  private isUnlocked = false;
 
   constructor() {
     this.setupMobileUnlock();
@@ -37,26 +42,31 @@ class AudioSynthEngine {
     if (typeof window === 'undefined') return;
 
     const unlock = () => {
-      this.initContext();
-      if (this.ctx && this.ctx.state === 'suspended') {
-        this.ctx.resume().catch(() => {});
-      }
-      this.isUnlocked = true;
+      this.ensureContext().then((ctx) => {
+        if (ctx && ctx.state === 'suspended') {
+          ctx.resume().catch(() => {});
+        }
+      });
       window.removeEventListener('touchstart', unlock);
       window.removeEventListener('touchend', unlock);
       window.removeEventListener('click', unlock);
+      window.removeEventListener('keydown', unlock);
     };
 
     window.addEventListener('touchstart', unlock, { passive: true });
     window.addEventListener('touchend', unlock, { passive: true });
     window.addEventListener('click', unlock, { passive: true });
+    window.addEventListener('keydown', unlock, { passive: true });
   }
 
-  private initContext() {
-    if (!this.ctx) {
-      try {
+  public async ensureContext(): Promise<AudioContext | null> {
+    if (typeof window === 'undefined') return null;
+
+    try {
+      if (!this.ctx) {
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         this.ctx = new AudioCtx();
+        
         this.masterGain = this.ctx.createGain();
         this.analyser = this.ctx.createAnalyser();
         this.analyser.fftSize = 128;
@@ -65,12 +75,20 @@ class AudioSynthEngine {
         this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
         this.masterGain.connect(this.analyser);
         this.analyser.connect(this.ctx.destination);
-      } catch (err) {
-        console.warn('AudioContext initialization warning:', err);
       }
-    }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume().catch(() => {});
+
+      if (this.ctx.state === 'suspended') {
+        await this.ctx.resume();
+      }
+
+      if (this.masterGain) {
+        this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
+      }
+
+      return this.ctx;
+    } catch (err) {
+      console.warn('AudioContext initialization warning:', err);
+      return null;
     }
   }
 
@@ -93,7 +111,7 @@ class AudioSynthEngine {
   }
 
   private notify() {
-    this.listeners.forEach(cb => cb());
+    this.listeners.forEach((cb) => cb());
   }
 
   public async playTrack(
@@ -105,7 +123,7 @@ class AudioSynthEngine {
     audioUrl?: string,
     trackNumber?: number
   ) {
-    this.initContext();
+    await this.ensureContext();
 
     const isSameTrack = this.currentTrackId === trackId;
 
@@ -117,42 +135,19 @@ class AudioSynthEngine {
 
     this.isPlaying = true;
 
-    // Check if custom audioUrl is provided (e.g. from IndexedDB or explicit link)
+    // 1. Try real audio if provided
     let playedSuccessfully = false;
 
     if (audioUrl && audioUrl.trim() !== '') {
       playedSuccessfully = await this.playRealAudio(audioUrl.trim(), isSameTrack);
     }
 
-    // If explicit audioUrl was not present or failed, try candidate audio files in /audio/
-    if (!playedSuccessfully && !audioUrl?.startsWith('idb://')) {
-      const num = trackNumber || parseInt(trackId.replace(/\D/g, ''), 10) || 1;
-      const numPadded = num < 10 ? `0${num}` : `${num}`;
-
-      const candidateVariants = [
-        `/audio/${numPadded}.mp3.mp3`,
-        `/audio/${numPadded}.mp3`,
-        `/audio/${num}.mp3.mp3`,
-        `/audio/${num}.mp3`,
-        `/audio/track-${numPadded}.mp3`,
-        `/audio/track-${num}.mp3`,
-      ];
-
-      for (const candidate of candidateVariants) {
-        const success = await this.playRealAudio(candidate, isSameTrack);
-        if (success) {
-          playedSuccessfully = true;
-          break;
-        }
-      }
-    }
-
+    // 2. If no real audio or playback failed, immediately start procedural studio audio
     if (!playedSuccessfully) {
-      // Fallback to high-quality procedural audio synthesis
       this.stopRealAudio();
       this.isUsingRealAudio = false;
       this.startTimer();
-      this.startAudioSynthesis(rootNote, bpm, style);
+      this.startAudioSynthesis(rootNote, bpm, style, trackNumber || 1);
     }
 
     this.notify();
@@ -164,21 +159,20 @@ class AudioSynthEngine {
     rootNote = 58,
     bpm = 108,
     style = 'rnb_pop',
-    audioUrl?: string
+    audioUrl?: string,
+    trackNumber?: number
   ) {
     if (this.isPlaying && this.currentTrackId === trackId) {
       this.pause();
     } else {
-      this.playTrack(trackId, durationSeconds, rootNote, bpm, style, audioUrl);
+      this.playTrack(trackId, durationSeconds, rootNote, bpm, style, audioUrl, trackNumber);
     }
   }
 
   private initAudioElement() {
-    if (!this.audioElement) {
+    if (!this.audioElement && typeof window !== 'undefined') {
       this.audioElement = new Audio();
-      this.audioElement.crossOrigin = 'anonymous';
       this.audioElement.preload = 'auto';
-      // Required for mobile background / inline playback
       this.audioElement.setAttribute('playsinline', 'true');
       this.audioElement.setAttribute('webkit-playsinline', 'true');
 
@@ -198,29 +192,15 @@ class AudioSynthEngine {
         }
       };
 
-      this.audioElement.onerror = (e) => {
-        console.warn('Real audio file error or 404, fallback to rich synth:', e);
+      this.audioElement.onerror = () => {
         this.isUsingRealAudio = false;
       };
-
-      // Connect HTMLAudioElement to Web Audio AnalyserNode for live Audio Spectrum
-      if (this.ctx && this.masterGain && this.analyser) {
-        try {
-          if (!this.mediaSourceNode) {
-            this.mediaSourceNode = this.ctx.createMediaElementSource(this.audioElement);
-            this.mediaSourceNode.connect(this.masterGain);
-          }
-        } catch (err) {
-          console.warn('Could not create MediaElementSource (possibly CORS or mobile security):', err);
-        }
-      }
     }
   }
 
   private async playRealAudio(audioUrl: string, isSameTrack: boolean): Promise<boolean> {
     this.stopAudioSynthesis();
     this.stopTimer();
-    this.initContext();
     this.initAudioElement();
 
     if (!this.audioElement) return false;
@@ -242,7 +222,7 @@ class AudioSynthEngine {
           return false;
         }
       } catch {
-        // Continue to audio element check
+        return false;
       }
     }
 
@@ -265,13 +245,9 @@ class AudioSynthEngine {
     this.audioElement.volume = this.volume;
 
     try {
-      if (this.ctx && this.ctx.state === 'suspended') {
-        await this.ctx.resume();
-      }
       await this.audioElement.play();
       return true;
-    } catch (err) {
-      console.warn('Real audio playback failed, falling back to synth engine:', err);
+    } catch {
       this.isUsingRealAudio = false;
       return false;
     }
@@ -343,118 +319,263 @@ class AudioSynthEngine {
     }
   }
 
-  // High-Quality Multi-Layer Procedural Synthesizer for Dreamy Soul Pop / R&B Pop
-  private startAudioSynthesis(rootNote: number, bpm: number, style: string) {
+  /**
+   * Rich Multi-Layer Procedural Synthesizer
+   * Creates lush chord progressions, acoustic strumming, soulful lead melodies,
+   * warm basslines, and rhythmic beat per track.
+   */
+  private startAudioSynthesis(rootNote: number, bpm: number, style: string, trackNum = 1) {
     this.stopAudioSynthesis();
     if (!this.ctx || !this.masterGain) return;
 
-    // 2 beats per chord step
-    const intervalMs = Math.max(300, (60 / bpm) * 1000 * 2);
-    let step = 0;
+    // Beat timing
+    const beatIntervalMs = Math.max(250, (60 / bpm) * 1000);
+    const chordIntervalMs = beatIntervalMs * 4; // 4 beats per bar
+    let barIndex = 0;
+    let beatIndex = 0;
 
-    // Harmonic chords adapted to key & style
-    // For Bb Minor (rootNote=58): Bbm7, Ebm7, F7, Gbmaj7
-    const chordOffsets =
-      style === 'rnb_pop' || style === 'soul_pop'
-        ? [
-            [0, 3, 7, 10, 14], // Bbm9 / Min9
-            [5, 8, 12, 15],    // Ebm7 / Subdominant
-            [7, 11, 14, 17],   // F7 / Dominant
-            [8, 12, 15, 19],   // Gbmaj7 / Relative Major
-          ]
-        : style === 'dreamy_pop'
-        ? [
-            [0, 7, 10, 14],
-            [5, 9, 12, 15],
-            [-2, 2, 7, 10],
-            [3, 7, 10, 14],
-          ]
-        : [
-            [0, 3, 7, 10],
-            [5, 8, 12],
-            [7, 11, 14],
-            [8, 12, 15],
-          ];
+    // Harmonic Chord Progressions by Track & Style
+    // Chords are arrays of semitone offsets from rootNote
+    const progressions: Record<string, number[][]> = {
+      soul_pop: [
+        [0, 4, 7, 11, 14],   // Maj9 (Fmaj9)
+        [9, 12, 16, 19],     // Min7 (Dm7)
+        [2, 5, 9, 12],       // Min7 (Gm7)
+        [7, 11, 14, 17],     // Dom7 (C7)
+      ],
+      rnb_pop: [
+        [0, 3, 7, 10, 14],   // Min9 (Bbm9)
+        [5, 8, 12, 15],      // Min7 (Ebm7)
+        [8, 12, 15, 19],     // Maj7 (Gbmaj7)
+        [7, 11, 14, 17],     // Dom7 (F7)
+      ],
+      pop_rock: [
+        [0, 3, 7, 10],       // Gm
+        [8, 12, 15, 19],     // Eb
+        [3, 7, 10, 14],      // Bb
+        [5, 9, 12, 15],      // F
+      ],
+      ambient_ballad: [
+        [0, 3, 7, 10, 14],   // Cm9
+        [8, 12, 15, 19],     // Abmaj7
+        [5, 8, 12, 15],      // Fm7
+        [7, 10, 14, 17],     // G7sus
+      ],
+      dreamy_pop: [
+        [0, 4, 7, 11, 14],   // Ebmaj9
+        [5, 9, 12, 16],      // Abmaj7
+        [2, 5, 9, 12],       // Fm7
+        [7, 11, 14, 17],     // Bb7
+      ],
+      acoustic_pop: [
+        [0, 4, 7, 11],       // Abmaj7
+        [9, 12, 16, 19],     // Fm7
+        [2, 5, 9, 12],       // Bbm7
+        [7, 11, 14, 17],     // Eb7
+      ],
+      modern_rnb: [
+        [0, 3, 7, 10, 14],   // Dm9
+        [8, 12, 15, 19],     // Bbmaj7
+        [3, 7, 10, 14],      // Gm7
+        [7, 10, 14, 17],     // A7
+      ],
+      nostalgic_rnb: [
+        [0, 4, 7, 11, 14],   // Bbmaj9
+        [7, 11, 14, 17],     // F7
+        [9, 12, 16, 19],     // Gm7
+        [5, 9, 12, 16],      // Ebmaj7
+      ],
+      emotion_ballad: [
+        [0, 3, 7, 10],       // F#m
+        [7, 11, 14, 17],     // Dmaj7
+        [2, 5, 9, 12],       // Bm7
+        [8, 12, 15, 19],     // C#7
+      ],
+      acoustic: [
+        [0, 4, 7, 11],       // Fmaj7
+        [9, 12, 16],         // Dm
+        [5, 9, 12],          // Bb
+        [7, 11, 14],         // C
+      ]
+    };
 
-    const triggerChord = () => {
+    const chordsList = progressions[style] || progressions.soul_pop;
+
+    // Melody scale intervals
+    const melodyScale = [0, 2, 4, 7, 9, 11, 12, 14, 16];
+
+    // Trigger full bar chords & atmospheric pad
+    const playChordBar = () => {
       if (!this.ctx || !this.masterGain || !this.isPlaying || this.isUsingRealAudio) return;
 
       const now = this.ctx.currentTime;
-      const currentChord = chordOffsets[step % chordOffsets.length];
-      step++;
+      const currentChord = chordsList[barIndex % chordsList.length];
+      barIndex++;
 
-      // 1. Lush Electric Piano / Synth Pad
+      // 1. Lush Electric Piano / Acoustic Pad Chords (Warm Polyphonic Voicing)
       currentChord.forEach((offset, idx) => {
         if (!this.ctx || !this.masterGain) return;
         const osc = this.ctx.createOscillator();
         const noteGain = this.ctx.createGain();
         const filter = this.ctx.createBiquadFilter();
 
-        const freq = 440 * Math.pow(2, (rootNote + offset - 69) / 12);
+        const freq = midiToFreq(rootNote + offset);
         osc.type = idx === 0 ? 'triangle' : 'sine';
         osc.frequency.setValueAtTime(freq, now);
 
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(1200 + idx * 250, now);
-        filter.Q.setValueAtTime(1.5, now);
+        filter.frequency.setValueAtTime(1400 + idx * 250, now);
+        filter.Q.setValueAtTime(1.2, now);
 
-        noteGain.gain.setValueAtTime(0.001, now);
-        noteGain.gain.exponentialRampToValueAtTime(0.18 / (idx + 1.2), now + 0.05);
-        noteGain.gain.exponentialRampToValueAtTime(0.001, now + (intervalMs / 1000) * 0.95);
+        // Strum arpeggiation delay (15ms between strings)
+        const noteStart = now + idx * 0.018;
+        const noteDuration = (chordIntervalMs / 1000) * 0.95;
+
+        noteGain.gain.setValueAtTime(0.0001, noteStart);
+        noteGain.gain.setTargetAtTime(0.12 / (idx + 1.2), noteStart, 0.04);
+        noteGain.gain.setTargetAtTime(0.0001, noteStart + noteDuration * 0.7, 0.2);
 
         osc.connect(filter);
         filter.connect(noteGain);
         noteGain.connect(this.masterGain);
 
-        osc.start(now);
-        osc.stop(now + intervalMs / 1000);
+        osc.start(noteStart);
+        osc.stop(noteStart + noteDuration);
+
+        this.activeVoices.push({ osc, gain: noteGain });
       });
 
-      // 2. Warm R&B Sub Bass
+      // 2. Warm Bassline
       const bassOsc = this.ctx.createOscillator();
       const bassGain = this.ctx.createGain();
-      const bassFreq = 440 * Math.pow(2, (rootNote - 12 + currentChord[0] - 69) / 12);
+      const bassFreq = midiToFreq(rootNote - 12 + currentChord[0]);
 
-      bassOsc.type = 'sine';
+      bassOsc.type = 'triangle';
       bassOsc.frequency.setValueAtTime(bassFreq, now);
 
-      bassGain.gain.setValueAtTime(0.28, now);
-      bassGain.gain.exponentialRampToValueAtTime(0.001, now + (intervalMs / 1000) * 0.85);
+      bassGain.gain.setValueAtTime(0.0001, now);
+      bassGain.gain.setTargetAtTime(0.24, now, 0.03);
+      bassGain.gain.setTargetAtTime(0.0001, now + (chordIntervalMs / 1000) * 0.8, 0.15);
 
       bassOsc.connect(bassGain);
       bassGain.connect(this.masterGain);
 
       bassOsc.start(now);
-      bassOsc.stop(now + (intervalMs / 1000) * 0.9);
+      bassOsc.stop(now + (chordIntervalMs / 1000) * 0.95);
 
-      // 3. Crisp R&B Hi-Hat & Snap on off-beat
-      setTimeout(() => {
-        if (!this.ctx || !this.masterGain || !this.isPlaying || this.isUsingRealAudio) return;
-        const subNow = this.ctx.currentTime;
-        const hatOsc = this.ctx.createOscillator();
-        const hatGain = this.ctx.createGain();
-        const hatFilter = this.ctx.createBiquadFilter();
+      this.activeVoices.push({ osc: bassOsc, gain: bassGain });
 
-        hatOsc.type = 'square';
-        hatOsc.frequency.setValueAtTime(3200 + (step % 2) * 1200, subNow);
-
-        hatFilter.type = 'highpass';
-        hatFilter.frequency.setValueAtTime(2500, subNow);
-
-        hatGain.gain.setValueAtTime(0.04, subNow);
-        hatGain.gain.exponentialRampToValueAtTime(0.0001, subNow + 0.07);
-
-        hatOsc.connect(hatFilter);
-        hatFilter.connect(hatGain);
-        hatGain.connect(this.masterGain);
-
-        hatOsc.start(subNow);
-        hatOsc.stop(subNow + 0.08);
-      }, intervalMs / 2);
+      // Clean up finished voice references periodically
+      if (this.activeVoices.length > 50) {
+        this.activeVoices = this.activeVoices.slice(-20);
+      }
     };
 
-    triggerChord();
-    this.chordTimer = window.setInterval(triggerChord, intervalMs);
+    // Trigger individual rhythmic beats and vocal/lead melody notes
+    const playBeat = () => {
+      if (!this.ctx || !this.masterGain || !this.isPlaying || this.isUsingRealAudio) return;
+
+      const now = this.ctx.currentTime;
+      const beatInBar = beatIndex % 4;
+      beatIndex++;
+
+      // 1. Kick Drum (Beat 0 and Beat 2.5)
+      if (beatInBar === 0 || (beatInBar === 2 && trackNum % 2 === 0)) {
+        const kickOsc = this.ctx.createOscillator();
+        const kickGain = this.ctx.createGain();
+        kickOsc.type = 'sine';
+        kickOsc.frequency.setValueAtTime(120, now);
+        kickOsc.frequency.exponentialRampToValueAtTime(38, now + 0.08);
+
+        kickGain.gain.setValueAtTime(0.3, now);
+        kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+        kickOsc.connect(kickGain);
+        kickGain.connect(this.masterGain);
+        kickOsc.start(now);
+        kickOsc.stop(now + 0.15);
+      }
+
+      // 2. Snare / Finger Snap (Beat 1 and Beat 3)
+      if (beatInBar === 1 || beatInBar === 3) {
+        const snapOsc = this.ctx.createOscillator();
+        const snapGain = this.ctx.createGain();
+        const snapFilter = this.ctx.createBiquadFilter();
+
+        snapOsc.type = 'triangle';
+        snapOsc.frequency.setValueAtTime(240, now);
+
+        snapFilter.type = 'bandpass';
+        snapFilter.frequency.setValueAtTime(1800, now);
+        snapFilter.Q.setValueAtTime(3.0, now);
+
+        snapGain.gain.setValueAtTime(0.15, now);
+        snapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
+
+        snapOsc.connect(snapFilter);
+        snapFilter.connect(snapGain);
+        snapGain.connect(this.masterGain);
+        snapOsc.start(now);
+        snapOsc.stop(now + 0.1);
+      }
+
+      // 3. Crisp Hi-Hat / Acoustic Shaker
+      const hatOsc = this.ctx.createOscillator();
+      const hatGain = this.ctx.createGain();
+      const hatFilter = this.ctx.createBiquadFilter();
+
+      hatOsc.type = 'square';
+      hatOsc.frequency.setValueAtTime(3800 + (beatInBar % 2) * 800, now);
+
+      hatFilter.type = 'highpass';
+      hatFilter.frequency.setValueAtTime(4500, now);
+
+      hatGain.gain.setValueAtTime(0.035, now);
+      hatGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+
+      hatOsc.connect(hatFilter);
+      hatFilter.connect(hatGain);
+      hatGain.connect(this.masterGain);
+      hatOsc.start(now);
+      hatOsc.stop(now + 0.06);
+
+      // 4. Soulful Lead Melody Note (Occurs rhythmically like a singing phrase)
+      if (beatInBar === 0 || beatInBar === 2 || (beatInBar === 3 && Math.random() > 0.4)) {
+        const leadOsc = this.ctx.createOscillator();
+        const leadGain = this.ctx.createGain();
+        const leadFilter = this.ctx.createBiquadFilter();
+
+        const scaleStep = melodyScale[(beatIndex + trackNum) % melodyScale.length];
+        const melodyFreq = midiToFreq(rootNote + 12 + scaleStep);
+
+        leadOsc.type = 'sine';
+        leadOsc.frequency.setValueAtTime(melodyFreq, now);
+
+        leadFilter.type = 'lowpass';
+        leadFilter.frequency.setValueAtTime(2200, now);
+        leadFilter.Q.setValueAtTime(1.5, now);
+
+        const leadDur = (beatIntervalMs / 1000) * 0.8;
+        leadGain.gain.setValueAtTime(0.0001, now);
+        leadGain.gain.setTargetAtTime(0.14, now, 0.03);
+        leadGain.gain.setTargetAtTime(0.0001, now + leadDur * 0.6, 0.1);
+
+        leadOsc.connect(leadFilter);
+        leadFilter.connect(leadGain);
+        leadGain.connect(this.masterGain);
+
+        leadOsc.start(now);
+        leadOsc.stop(now + leadDur);
+      }
+    };
+
+    // Initial triggers
+    playChordBar();
+    playBeat();
+
+    // Loop timers
+    this.chordTimer = window.setInterval(playChordBar, chordIntervalMs);
+    this.beatTimer = window.setInterval(playBeat, beatIntervalMs);
   }
 
   private stopAudioSynthesis() {
@@ -462,6 +583,22 @@ class AudioSynthEngine {
       clearInterval(this.chordTimer);
       this.chordTimer = null;
     }
+    if (this.beatTimer !== null) {
+      clearInterval(this.beatTimer);
+      this.beatTimer = null;
+    }
+
+    // Stop and clear active oscillator voices
+    for (const voice of this.activeVoices) {
+      try {
+        voice.gain.gain.setValueAtTime(0, this.ctx?.currentTime || 0);
+        voice.osc.stop();
+        voice.osc.disconnect();
+      } catch {
+        // Ignored
+      }
+    }
+    this.activeVoices = [];
   }
 
   // Real-time Audio Spectrum Frequency Data
@@ -475,13 +612,12 @@ class AudioSynthEngine {
       const dataArray = new Uint8Array(bufferLength);
       this.analyser.getByteFrequencyData(dataArray);
 
-      // Check if actual Web Audio analyser has active frequency data
       let sum = 0;
       for (let i = 0; i < bufferLength; i++) {
         sum += dataArray[i];
       }
 
-      if (sum > 10) {
+      if (sum > 5) {
         const result: number[] = [];
         const step = Math.floor(bufferLength / 16) || 1;
         for (let i = 0; i < 16; i++) {
@@ -492,14 +628,14 @@ class AudioSynthEngine {
       }
     }
 
-    // Dynamic rhythmic fallback visualizer when using isolated audio elements or cross-origin media
-    const t = Date.now() / 150;
+    // Dynamic rhythmic fallback visualizer for smooth real-time animation
+    const t = Date.now() / 140;
     const result: number[] = [];
     for (let i = 0; i < 16; i++) {
-      const wave1 = Math.sin(t + i * 0.4) * 30;
-      const wave2 = Math.cos(t * 1.5 + i * 0.3) * 20;
-      const beat = (Math.sin(t * 2) > 0.6 ? 25 : 0) * (i < 6 ? 1.4 : 0.6);
-      const val = Math.max(15, Math.min(95, Math.floor(40 + wave1 + wave2 + beat)));
+      const wave1 = Math.sin(t + i * 0.4) * 28;
+      const wave2 = Math.cos(t * 1.4 + i * 0.3) * 18;
+      const beat = (Math.sin(t * 2) > 0.5 ? 30 : 0) * (i < 6 ? 1.4 : 0.6);
+      const val = Math.max(15, Math.min(95, Math.floor(42 + wave1 + wave2 + beat)));
       result.push(val);
     }
     return result;
@@ -507,3 +643,4 @@ class AudioSynthEngine {
 }
 
 export const audioSynth = new AudioSynthEngine();
+
