@@ -3,9 +3,6 @@ import { Navbar } from './components/Navbar';
 import { Hero } from './components/Hero';
 import { MusicPlayerSection } from './components/MusicPlayerSection';
 import { FloatingMusicPlayer } from './components/FloatingMusicPlayer';
-import { ImageEditorModal } from './components/ImageEditorModal';
-import { AdminLoginModal } from './components/AdminLoginModal';
-import { SongEditorModal } from './components/SongEditorModal';
 import { ImageProvider } from './context/ImageContext';
 import { SongProvider } from './context/SongContext';
 
@@ -43,11 +40,6 @@ export default function App() {
           <FloatingMusicPlayer
             onNavigateMusic={() => handleNavigateSection('music')}
           />
-
-          {/* Custom Modals */}
-          <ImageEditorModal />
-          <AdminLoginModal />
-          <SongEditorModal />
 
         </div>
       </SongProvider>

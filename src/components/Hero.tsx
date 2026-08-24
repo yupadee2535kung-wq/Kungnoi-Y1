@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Pause, ChevronRight, ChevronLeft, Disc, Music, FileText, BookOpen, Camera, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Play, Pause, ChevronRight, ChevronLeft, Disc, Music, FileText, BookOpen, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
 import { useBandImages } from '../context/ImageContext';
 import { useSongs } from '../context/SongContext';
 
@@ -9,14 +9,13 @@ interface HeroProps {
 }
 
 export const Hero: React.FC<HeroProps> = ({ onSelectTrack, onNavigateSection }) => {
-  const { images, slideshowList, openImageEditor } = useBandImages();
+  const { images, slideshowList } = useBandImages();
   const {
     songs,
     currentTrackId,
     isPlaying,
     togglePlayPause,
     playTrack,
-    isAdmin,
   } = useSongs();
 
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
@@ -126,17 +125,6 @@ export const Hero: React.FC<HeroProps> = ({ onSelectTrack, onNavigateSection }) 
                 >
                   {isAutoSlide ? 'Auto-Slide ON' : 'Paused'}
                 </button>
-
-                {isAdmin && (
-                  <button
-                    type="button"
-                    onClick={() => openImageEditor('albumCover')}
-                    className="bg-neutral-950/85 hover:bg-red-600 border border-neutral-700 text-white text-xs px-3 py-1 rounded-full flex items-center gap-1.5 transition-all cursor-pointer"
-                  >
-                    <Camera className="w-3.5 h-3.5 text-red-400" />
-                    <span>เปลี่ยนรูป</span>
-                  </button>
-                )}
               </div>
             </div>
 

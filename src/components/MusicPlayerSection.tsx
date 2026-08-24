@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, Plus, Edit3, Trash2, Lock, ShieldCheck, RefreshCw, KeyRound, Camera, Images, ChevronLeft, ChevronRight, Upload, CheckCircle2, Radio, Youtube, Video, PlayCircle, ListOrdered, Film } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered } from 'lucide-react';
 import { ALBUM_INFO } from '../data/bandData';
 import { Song } from '../types';
 import { useSongs } from '../context/SongContext';
-import { useBandImages, BandImageMap } from '../context/ImageContext';
-import { getYouTubeEmbedUrl, getYouTubeWatchUrl, getYouTubeVideoId, getYouTubeSequentialEmbedUrl } from '../utils/youtubeUtils';
+import { useBandImages } from '../context/ImageContext';
+import { getYouTubeWatchUrl, getYouTubeSequentialEmbedUrl } from '../utils/youtubeUtils';
 
 interface MusicPlayerSectionProps {
   currentTrackId?: string;
@@ -14,12 +14,6 @@ interface MusicPlayerSectionProps {
 export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentTrackId: propCurrentTrackId, onSelectTrack: propOnSelectTrack }) => {
   const {
     songs,
-    isAdmin,
-    openAdminModal,
-    logoutAdmin,
-    openSongEditor,
-    deleteSong,
-    resetSongs,
     currentTrackId: contextTrackId,
     setCurrentTrackId,
     isPlaying,
@@ -30,7 +24,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     repeatMode,
     isShuffle,
     frequencies,
-    playTrack,
     togglePlayPause,
     playNext,
     playPrev,
@@ -38,7 +31,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     toggleShuffle,
     seek,
     setVolume,
-    uploadSongAudio,
   } = useSongs();
 
   const currentTrackId = propCurrentTrackId || contextTrackId;
@@ -49,13 +41,10 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     setCurrentTrackId(id);
   };
 
-  const { images, openImageEditor, slideshowList, deleteSlide } = useBandImages();
+  const { images, slideshowList } = useBandImages();
 
   const [activeTab, setActiveTab] = useState<'lyrics' | 'story' | 'chords'>('lyrics');
   const [copiedLink, setCopiedLink] = useState(false);
-  const [isUploadingMp3, setIsUploadingMp3] = useState(false);
-  const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
-  const quickMp3InputRef = useRef<HTMLInputElement>(null);
 
   // Visual Display Mode: Slideshow vs YouTube MV
   const [visualMode, setVisualMode] = useState<'slideshow' | 'mv'>('slideshow');
@@ -79,17 +68,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     title: ALBUM_INFO.titleThai,
     subtitle: 'TRIPLETS Official',
     url: images.albumCover,
-  };
-
-  const handleDeleteCurrentSlide = () => {
-    if (slideshowList.length <= 1) {
-      alert('จำเป็นต้องมีรูปภาพเหลือในสไลด์โชว์อย่างน้อย 1 รูป');
-      return;
-    }
-    if (confirm(`คุณต้องการลบรูปสไลด์ "${activeSlide.title}" ออกใช่หรือไม่?`)) {
-      deleteSlide(activeSlide.id);
-      setCurrentSlideIndex((prev) => (prev >= slideshowList.length - 1 ? 0 : prev));
-    }
   };
 
   // Fallback to first song if currentTrackId isn't found
@@ -131,19 +109,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     togglePlayPause(song.id);
   };
 
-  const handleDelete = (e: React.MouseEvent, song: Song) => {
-    e.stopPropagation();
-    if (window.confirm(`คุณต้องการลบเพลง "${song.titleThai}" และเนื้อเพลงนี้ใช่หรือไม่?`)) {
-      const deleted = deleteSong(song.id);
-      if (deleted && currentTrackId === song.id) {
-        const remaining = songs.filter(s => s.id !== song.id);
-        if (remaining.length > 0) {
-          onSelectTrack(remaining[0].id);
-        }
-      }
-    }
-  };
-
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = Number(e.target.value);
     seek(val);
@@ -164,30 +129,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     navigator.clipboard.writeText(window.location.href);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
-  };
-
-  const handleQuickAudioUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsUploadingMp3(true);
-    setUploadSuccessMsg(null);
-    try {
-      const success = await uploadSongAudio(activeSong.id, file);
-      if (success) {
-        setUploadSuccessMsg(`โหลดไฟล์ MP3 สำหรับ "${activeSong.titleThai}" เรียบร้อยแล้ว!`);
-        setTimeout(() => setUploadSuccessMsg(null), 4000);
-      } else {
-        alert('เกิดข้อผิดพลาดในการโหลดไฟล์เสียง กรุณาลองใหม่อีกครั้ง');
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setIsUploadingMp3(false);
-      if (quickMp3InputRef.current) {
-        quickMp3InputRef.current.value = '';
-      }
-    }
   };
 
   return (
@@ -313,16 +254,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                             <span className="hidden sm:inline">YouTube</span>
                           </a>
                         )}
-                        {isAdmin && (
-                          <button
-                            type="button"
-                            onClick={() => openSongEditor(activeSong)}
-                            className="p-1.5 bg-neutral-950/90 hover:bg-amber-600 border border-neutral-700 text-white rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer"
-                            title="แก้ไขลิงก์ MV เพลงนี้"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
                       </div>
                     </div>
 
@@ -384,39 +315,20 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                     </div>
                     <div>
                       <h4 className="text-base font-bold text-white mb-1">
-                        ยังไม่มีลิงก์ YouTube MV
+                        โหมดรูปภาพและเครื่องเล่นเพลง
                       </h4>
                       <p className="text-xs text-neutral-400 leading-relaxed font-sans">
-                        เพลง <span className="text-red-400 font-semibold">"{activeSong.titleThai}"</span> ยังไม่ได้กำหนดลิงก์ YouTube MV ในระบบ (ใส่ได้สูงสุด 10 URL)
+                        เพลง <span className="text-red-400 font-semibold">"{activeSong.titleThai}"</span> กำลังเล่นเสียงเพลงคุณภาพสูง พร้อมภาพศิลปิน Kungnoi Y.
                       </p>
                     </div>
 
-                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
-                      {isAdmin ? (
-                        <button
-                          type="button"
-                          onClick={() => openSongEditor(activeSong)}
-                          className="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-red-950/50 cursor-pointer"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>ใส่ลิงก์ YouTube MV (สูงสุด 10 URL)</span>
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={openAdminModal}
-                          className="w-full sm:w-auto flex items-center justify-center gap-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-bold px-4 py-2.5 rounded-xl transition-all cursor-pointer border border-neutral-700"
-                        >
-                          <KeyRound className="w-3.5 h-3.5 text-red-400" />
-                          <span>เข้าสู่ระบบ Admin เพื่อใส่ลิงก์</span>
-                        </button>
-                      )}
+                    <div className="pt-2 flex items-center justify-center">
                       <button
                         type="button"
                         onClick={() => setVisualMode('slideshow')}
-                        className="w-full sm:w-auto text-xs text-neutral-400 hover:text-white px-3 py-2 cursor-pointer font-medium"
+                        className="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white px-4 py-2 rounded-xl cursor-pointer font-medium transition-colors"
                       >
-                        ← กลับไปดูภาพสไลด์
+                        ← สลับไปดูภาพสไลด์โชว์
                       </button>
                     </div>
                   </div>
@@ -435,46 +347,12 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
 
                 {/* Top Bar Controls Overlay */}
                 <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-1.5 z-10">
-                  {/* Left controls: Edit & Delete buttons (Visible only in Admin mode) */}
-                  {isAdmin ? (
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => openImageEditor(activeSlide.key)}
-                        className="flex items-center gap-1.5 bg-neutral-950/85 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer group"
-                        title={`แก้ไขภาพ ${activeSlide.title}`}
-                      >
-                        <Camera className="w-3.5 h-3.5 text-red-500 group-hover:text-white transition-colors" />
-                        <span>แก้ไขรูป</span>
-                      </button>
+                  <span className="bg-neutral-950/80 backdrop-blur-md text-amber-300 font-mono text-[11px] font-bold px-2.5 py-1 rounded-xl border border-amber-500/30">
+                    {activeSlide.tag || `รูปที่ ${currentSlideIndex + 1}/${slideshowList.length}`}
+                  </span>
 
-                      <button
-                        type="button"
-                        onClick={handleDeleteCurrentSlide}
-                        className="flex items-center justify-center p-1.5 bg-neutral-950/85 hover:bg-red-950 border border-neutral-700/80 hover:border-red-600 text-neutral-300 hover:text-red-400 rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer"
-                        title={`ลบรูป "${activeSlide.title}" ออกจากสไลด์โชว์`}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div></div>
-                  )}
-
-                  {/* Right controls: Add slide, Slideshow Toggle & Vinyl Disc Indicator */}
+                  {/* Right controls: MV button, Slideshow Toggle & Vinyl Disc Indicator */}
                   <div className="flex items-center gap-1.5">
-                    {isAdmin && (
-                      <button
-                        type="button"
-                        onClick={() => openImageEditor()}
-                        className="flex items-center gap-1 bg-neutral-950/85 hover:bg-emerald-900 border border-neutral-700/80 hover:border-emerald-600 text-emerald-400 hover:text-white text-[11px] font-bold px-2 py-1.5 rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer"
-                        title="เพิ่มรูปสไลด์โชว์ใหม่ (แนะนำสัดส่วน 1:1 ขนาด 1000x1000 px)"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">เพิ่มรูป</span>
-                      </button>
-                    )}
-
                     {activeSongMvUrls.length > 0 && (
                       <button
                         type="button"
@@ -500,7 +378,7 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                       }`}
                       title="สลับโหมดสไลด์โชว์รูปภาพวงอัตโนมัติ"
                     >
-                      <Images className="w-3.5 h-3.5 text-red-400" />
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                       <span className="hidden sm:inline">{isSlideshowMode ? 'สไลด์ ON' : 'สไลด์ OFF'}</span>
                     </button>
 
@@ -630,39 +508,19 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 }`}></div>
               </div>
 
-              {/* Quick MP3 Upload & Status Bar */}
-              <div className="pt-1 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800/60">
+              {/* Master Audio Format Badge */}
+              <div className="pt-1 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800/60 text-[11px] font-mono text-neutral-400">
                 <div className="flex items-center gap-2">
-                  <input
-                    ref={quickMp3InputRef}
-                    type="file"
-                    accept="audio/*,.mp3,.wav,.ogg,.m4a"
-                    onChange={handleQuickAudioUpload}
-                    className="hidden"
-                    id="quick-mp3-upload-input"
-                  />
-                  <label
-                    htmlFor="quick-mp3-upload-input"
-                    className="inline-flex items-center gap-1.5 text-[11px] font-bold px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 hover:text-white text-neutral-200 border border-neutral-700/80 shadow-md cursor-pointer transition-all active:scale-95"
-                    title="เลือกไฟล์เสียง MP3 จากเครื่อง (รองรับทั้งมือถือและคอมพิวเตอร์)"
-                  >
-                    <Upload className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{isUploadingMp3 ? 'กำลังบันทึกไฟล์...' : 'เลือก/เปลี่ยนไฟล์ MP3 เพลงนี้'}</span>
-                  </label>
-
-                  {activeSong.audioUrl && (
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                      <span>มีไฟล์เสียงพร้อมเล่น</span>
-                    </span>
-                  )}
-                </div>
-
-                {uploadSuccessMsg && (
-                  <span className="text-[11px] text-emerald-400 font-medium bg-emerald-950/90 border border-emerald-800 px-2.5 py-1 rounded-lg animate-fade-in">
-                    {uploadSuccessMsg}
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                    <span>High-Fidelity Stereo Audio</span>
                   </span>
-                )}
+                  <span className="text-neutral-500 hidden sm:inline">•</span>
+                  <span className="text-neutral-400 hidden sm:inline">10 Official Studio Tracks</span>
+                </div>
+                <span className="text-[10px] text-red-400 font-bold bg-red-950/40 border border-red-900/50 px-2 py-0.5 rounded">
+                  TRIPLETS RECORD
+                </span>
               </div>
             </div>
 
@@ -823,79 +681,15 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
           {/* Right: Album Tracklist & Interactive Lyrics / Story Viewer */}
           <div className="lg:col-span-7 space-y-6">
             
-            {/* Admin Control Bar for Songs & Lyrics */}
-            <div className="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-lg">
-              <div className="flex items-center gap-2.5">
-                {isAdmin ? (
-                  <div className="flex items-center gap-2 text-xs font-bold text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-3 py-1.5 rounded-xl">
-                    <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                    <span>Admin Mode Active</span>
-                  </div>
-                ) : (
-                  <button
-                    onClick={openAdminModal}
-                    className="flex items-center gap-2 text-xs font-bold text-neutral-300 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 px-3 py-1.5 rounded-xl transition-all cursor-pointer hover:text-white"
-                  >
-                    <KeyRound className="w-3.5 h-3.5 text-red-500" />
-                    <span>เข้าสู่ระบบ Admin เพื่อ เพิ่ม/ลบ/แก้ไข เพลง & เนื้อเพลง</span>
-                  </button>
-                )}
-              </div>
-
-              {isAdmin ? (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => openSongEditor()}
-                    className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>เพิ่มเพลงใหม่</span>
-                  </button>
-                  <button
-                    onClick={resetSongs}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white text-xs p-1.5 rounded-xl transition-colors cursor-pointer"
-                    title="คืนค่าเป็นเพลงเริ่มต้น"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={logoutAdmin}
-                    className="bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-red-400 text-xs px-2.5 py-1.5 rounded-xl transition-colors cursor-pointer"
-                  >
-                    ออกจากระบบ
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={openAdminModal}
-                  className="bg-red-600/20 hover:bg-red-600/30 border border-red-500/40 text-red-400 hover:text-red-300 text-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer font-bold flex items-center gap-1.5"
-                >
-                  <Lock className="w-3.5 h-3.5" />
-                  <span>เข้าสู่ระบบ Admin</span>
-                </button>
-              )}
-            </div>
-
             {/* Tracklist Table */}
             <div className="bg-neutral-900/80 border border-neutral-800 rounded-3xl p-6 shadow-xl space-y-4">
               <div className="flex items-center justify-between">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <span>รายชื่อเพลงในอัลบั้ม ({songs.length} เพลง)</span>
-                  {isAdmin && (
-                    <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950 border border-emerald-800 px-2 py-0.5 rounded-full">
-                      โหมดแก้ไขเปิดอยู่
-                    </span>
-                  )}
                 </h3>
-                {isAdmin && (
-                  <button
-                    onClick={() => openSongEditor()}
-                    className="text-xs bg-red-600 hover:bg-red-500 text-white px-3 py-1 rounded-xl font-bold transition-all flex items-center gap-1 cursor-pointer"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>เพิ่มเพลง</span>
-                  </button>
-                )}
+                <span className="text-xs font-mono text-neutral-400">
+                  Total: {songs.length} Tracks
+                </span>
               </div>
 
               <div className="divide-y divide-neutral-800/80">
@@ -932,11 +726,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                                 {song.featuredArtist}
                               </span>
                             )}
-                            {song.audioUrl && (
-                              <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-1.5 py-0.5 rounded font-mono font-bold">
-                                AUDIO
-                              </span>
-                            )}
                             {((song.youtubeUrls && song.youtubeUrls.length > 0) || song.youtubeUrl) && (
                               <button
                                 type="button"
@@ -962,29 +751,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
 
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-mono text-neutral-400">{song.duration}</span>
-
-                        {/* Admin Track Action Buttons (Edit, Delete) */}
-                        {isAdmin && (
-                          <div className="flex items-center gap-1.5 pl-2 border-l border-neutral-700/60">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                openSongEditor(song);
-                              }}
-                              className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-lg transition-colors cursor-pointer"
-                              title="แก้ไขเพลงและเนื้อเพลง"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              onClick={(e) => handleDelete(e, song)}
-                              className="p-1.5 bg-neutral-800 hover:bg-red-900/80 text-neutral-400 hover:text-red-300 rounded-lg transition-colors cursor-pointer"
-                              title="ลบเพลงนี้"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        )}
 
                         <button
                           className={`p-2 rounded-full transition-all ${

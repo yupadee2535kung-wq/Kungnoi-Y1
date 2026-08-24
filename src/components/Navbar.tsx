@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Music, Disc, Menu, X, Volume2, Camera, Lock, ShieldCheck } from 'lucide-react';
+import { Music, Disc, Menu, X, Volume2 } from 'lucide-react';
 import { audioSynth } from '../utils/audioSynth';
-import { useBandImages } from '../context/ImageContext';
-import { useSongs } from '../context/SongContext';
 
 interface NavbarProps {
   activeSection: string;
@@ -13,8 +11,6 @@ export const Navbar: React.FC<NavbarProps> = ({ activeSection, setActiveSection 
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
-  const { images, openImageEditor } = useBandImages();
-  const { isAdmin, openAdminModal } = useSongs();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -94,47 +90,11 @@ export const Navbar: React.FC<NavbarProps> = ({ activeSection, setActiveSection 
 
         {/* Right Action Controls */}
         <div className="flex items-center gap-2 sm:gap-3">
-          
-          {/* Admin Login / Status Button */}
-          <button
-            onClick={openAdminModal}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold shadow-md transition-all cursor-pointer ${
-              isAdmin
-                ? 'bg-emerald-950/80 border border-emerald-500/80 text-emerald-300 hover:bg-emerald-900'
-                : 'bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/80 hover:border-red-500/60 text-neutral-200 hover:text-white'
-            }`}
-            title="ระบบจัดการเพลง Admin"
-          >
-            {isAdmin ? (
-              <>
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="hidden sm:inline">Admin Mode</span>
-              </>
-            ) : (
-              <>
-                <Lock className="w-3.5 h-3.5 text-red-500" />
-                <span className="hidden sm:inline">Admin</span>
-              </>
-            )}
-          </button>
-
-          {/* Custom Image Editor Button (Visible only in Admin mode) */}
-          {isAdmin && (
-            <button
-              onClick={() => openImageEditor('win')}
-              className="flex items-center gap-1.5 bg-neutral-900/90 hover:bg-neutral-800 border border-neutral-700/80 hover:border-red-500/60 text-neutral-200 hover:text-white px-3 py-1.5 rounded-full text-xs font-semibold shadow-md transition-all cursor-pointer group"
-              title="เปลี่ยนหรืออัปโหลดรูปภาพศิลปินได้เอง"
-            >
-              <Camera className="w-3.5 h-3.5 text-red-500 group-hover:scale-110 transition-transform" />
-              <span className="hidden sm:inline">รูปศิลปิน</span>
-            </button>
-          )}
-
           {/* Active Player Indicator */}
           {isPlaying && (
             <button 
               onClick={() => handleNavClick('music')}
-              className="hidden sm:flex items-center gap-2 bg-red-950/40 border border-red-800/50 px-3 py-1.5 rounded-full text-xs text-red-300 animate-pulse hover:bg-red-900/50 transition-colors cursor-pointer"
+              className="flex items-center gap-2 bg-red-950/40 border border-red-800/50 px-3 py-1.5 rounded-full text-xs text-red-300 animate-pulse hover:bg-red-900/50 transition-colors cursor-pointer"
             >
               <Volume2 className="w-3.5 h-3.5 text-red-400 animate-bounce" />
               <span className="font-mono text-[11px] font-medium">กำลังเล่นเพลง</span>
