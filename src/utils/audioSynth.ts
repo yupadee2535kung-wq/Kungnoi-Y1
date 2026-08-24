@@ -135,14 +135,14 @@ class AudioSynthEngine {
 
     this.isPlaying = true;
 
-    // 1. Try real audio if provided
+    // 1. Check if real audio is available and valid
     let playedSuccessfully = false;
 
     if (audioUrl && audioUrl.trim() !== '') {
       playedSuccessfully = await this.playRealAudio(audioUrl.trim(), isSameTrack);
     }
 
-    // 2. If no real audio or playback failed, immediately start procedural studio audio
+    // 2. If no valid real audio file or playback couldn't start, use rich built-in studio synthesizer
     if (!playedSuccessfully) {
       this.stopRealAudio();
       this.isUsingRealAudio = false;
@@ -193,7 +193,13 @@ class AudioSynthEngine {
       };
 
       this.audioElement.onerror = () => {
-        this.isUsingRealAudio = false;
+        // Fallback to synth if real audio element fails during playback
+        if (this.isPlaying) {
+          this.isUsingRealAudio = false;
+          this.startTimer();
+          this.startAudioSynthesis(58, 108, 'rnb_pop', 1);
+          this.notify();
+        }
       };
     }
   }
@@ -215,10 +221,14 @@ class AudioSynthEngine {
       } else {
         return false;
       }
-    } else if (audioUrl.startsWith('/') && !audioUrl.startsWith('//')) {
+    } else if (audioUrl.startsWith('blob:')) {
+      srcToPlay = audioUrl;
+    } else if (audioUrl.startsWith('/') || audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
       try {
         const resp = await fetch(audioUrl, { method: 'HEAD' });
-        if (!resp.ok) {
+        const contentType = resp.headers.get('content-type') || '';
+        // If the server returns HTML (SPA fallback) or error, it's not a real audio file
+        if (!resp.ok || contentType.includes('text/html') || (!contentType.includes('audio/') && !contentType.includes('octet-stream') && !contentType.includes('video/'))) {
           return false;
         }
       } catch {
@@ -232,7 +242,7 @@ class AudioSynthEngine {
         this.objectUrlToRevoke = null;
       }
 
-      if (srcToPlay.startsWith('blob:')) {
+      if (srcToPlay.startsWith('blob:') && !audioUrl.startsWith('blob:')) {
         this.objectUrlToRevoke = srcToPlay;
       }
 
@@ -241,11 +251,11 @@ class AudioSynthEngine {
       this.audioElement.currentTime = isSameTrack ? this.currentTime : 0;
     }
 
-    this.isUsingRealAudio = true;
     this.audioElement.volume = this.volume;
 
     try {
       await this.audioElement.play();
+      this.isUsingRealAudio = true;
       return true;
     } catch {
       this.isUsingRealAudio = false;
@@ -432,8 +442,8 @@ class AudioSynthEngine {
         const noteDuration = (chordIntervalMs / 1000) * 0.95;
 
         noteGain.gain.setValueAtTime(0.0001, noteStart);
-        noteGain.gain.setTargetAtTime(0.12 / (idx + 1.2), noteStart, 0.04);
-        noteGain.gain.setTargetAtTime(0.0001, noteStart + noteDuration * 0.7, 0.2);
+        noteGain.gain.linearRampToValueAtTime(0.2 / (idx + 1), noteStart + 0.05);
+        noteGain.gain.exponentialRampToValueAtTime(0.0001, noteStart + noteDuration);
 
         osc.connect(filter);
         filter.connect(noteGain);
@@ -454,8 +464,8 @@ class AudioSynthEngine {
       bassOsc.frequency.setValueAtTime(bassFreq, now);
 
       bassGain.gain.setValueAtTime(0.0001, now);
-      bassGain.gain.setTargetAtTime(0.24, now, 0.03);
-      bassGain.gain.setTargetAtTime(0.0001, now + (chordIntervalMs / 1000) * 0.8, 0.15);
+      bassGain.gain.linearRampToValueAtTime(0.3, now + 0.04);
+      bassGain.gain.exponentialRampToValueAtTime(0.0001, now + (chordIntervalMs / 1000) * 0.9);
 
       bassOsc.connect(bassGain);
       bassGain.connect(this.masterGain);
@@ -557,8 +567,8 @@ class AudioSynthEngine {
 
         const leadDur = (beatIntervalMs / 1000) * 0.8;
         leadGain.gain.setValueAtTime(0.0001, now);
-        leadGain.gain.setTargetAtTime(0.14, now, 0.03);
-        leadGain.gain.setTargetAtTime(0.0001, now + leadDur * 0.6, 0.1);
+        leadGain.gain.linearRampToValueAtTime(0.18, now + 0.03);
+        leadGain.gain.exponentialRampToValueAtTime(0.0001, now + leadDur);
 
         leadOsc.connect(leadFilter);
         leadFilter.connect(leadGain);
