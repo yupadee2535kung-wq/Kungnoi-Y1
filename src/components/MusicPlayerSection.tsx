@@ -101,7 +101,7 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     if (songIndex !== -1 && songIndex < slideshowList.length) {
       setCurrentSlideIndex(songIndex);
     }
-  }, [activeSong.id, songs, slideshowList.length]);
+  }, [activeSong.id]);
 
   const handleTogglePlay = (song: Song) => {
     if (!song) return;
@@ -338,14 +338,16 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
               /* Album Cover Art & Band Image Slideshow */
               <div className="relative aspect-square rounded-2xl overflow-hidden group shadow-2xl border border-neutral-800 bg-neutral-900">
                 <img
+                  key={`player-slide-${currentSlideIndex}`}
                   src={activeSlide.url}
                   alt={activeSlide.title}
                   referrerPolicy="no-referrer"
-                  className={`w-full h-full object-cover transition-all duration-700 ${isPlaying ? 'scale-105' : 'scale-100'}`}
+                  className={`w-full h-full object-cover transition-all duration-700 animate-fadeIn ${isPlaying ? 'scale-105' : 'scale-100'}`}
                   onError={(e) => {
                     const target = e.target as HTMLImageElement;
-                    if (!target.src.includes('slide_01')) {
-                      target.src = '/images/slide_01.jpg';
+                    const fallback = `/images/slide_${String(currentSlideIndex + 1).padStart(2, '0')}.jpg`;
+                    if (target.src !== fallback) {
+                      target.src = fallback;
                     }
                   }}
                 />

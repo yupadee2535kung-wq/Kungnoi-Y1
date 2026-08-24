@@ -100,28 +100,8 @@ export const ImageProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return DEFAULT_IMAGES;
   });
 
-  // Initialize with 10 default presets or stored slideshow list
+  // Initialize with all 10 official presets
   const [slideshowList, setSlideshowList] = useState<SlideshowItem[]>(() => {
-    try {
-      const saved = localStorage.getItem(SLIDESHOW_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Ensure non-custom slides use the latest actual photo URL
-          return parsed.map((item: SlideshowItem) => {
-            if (!item.isCustom) {
-              const matchedPreset = DEFAULT_SLIDES_PRESETS.find(p => p.id === item.id);
-              if (matchedPreset) {
-                return { ...item, url: matchedPreset.url };
-              }
-            }
-            return item;
-          });
-        }
-      }
-    } catch {
-      // Ignored
-    }
     return DEFAULT_SLIDES_PRESETS.map((slide, idx) => ({
       id: slide.id,
       title: slide.title,

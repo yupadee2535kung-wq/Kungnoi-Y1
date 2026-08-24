@@ -66,10 +66,18 @@ export const Hero: React.FC<HeroProps> = ({ onSelectTrack, onNavigateSection }) 
       {/* Ambient Backdrop */}
       <div className="absolute inset-0 z-0">
         <img
+          key={`hero-bg-${activeSlideIndex}`}
           src={activeSlide.url}
           alt={activeSlide.title}
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover object-center filter blur-3xl brightness-[0.14] scale-115 transition-all duration-1000"
+          onError={(e) => {
+            const target = e.target as HTMLImageElement;
+            const fallback = `/images/slide_${String(activeSlideIndex + 1).padStart(2, '0')}.jpg`;
+            if (target.src !== fallback) {
+              target.src = fallback;
+            }
+          }}
         />
         <div className="absolute inset-0 bg-gradient-to-b from-neutral-950 via-neutral-950/85 to-neutral-950"></div>
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(180,90,70,0.15)_0%,rgba(10,10,10,0.95)_75%)]"></div>
@@ -100,14 +108,16 @@ export const Hero: React.FC<HeroProps> = ({ onSelectTrack, onNavigateSection }) 
         <div className="space-y-4">
           <div className="relative aspect-[16/10] sm:aspect-[16/9] lg:aspect-[2.1/1] min-h-[340px] sm:min-h-[440px] lg:min-h-[540px] max-h-[680px] w-full rounded-3xl overflow-hidden shadow-2xl border border-neutral-800 bg-neutral-900 group">
             <img
+              key={`hero-slide-${activeSlideIndex}`}
               src={activeSlide.url}
               alt={activeSlide.title}
               referrerPolicy="no-referrer"
-              className="w-full h-full object-cover object-center transition-all duration-700 group-hover:scale-102"
+              className="w-full h-full object-cover object-center transition-all duration-700 animate-fadeIn"
               onError={(e) => {
                 const target = e.target as HTMLImageElement;
-                if (!target.src.includes('slide_01')) {
-                  target.src = '/images/slide_01.jpg';
+                const fallback = `/images/slide_${String(activeSlideIndex + 1).padStart(2, '0')}.jpg`;
+                if (target.src !== fallback) {
+                  target.src = fallback;
                 }
               }}
             />
