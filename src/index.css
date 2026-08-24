@@ -1,0 +1,22 @@
+@import "tailwindcss";
+
+@layer utilities {
+  .font-script {
+    font-family: 'Dancing Script', 'Alex Brush', cursive;
+  }
+  .font-brush {
+    font-family: 'Alex Brush', 'Dancing Script', cursive;
+  }
+  .font-display {
+    font-family: 'Playfair Display', serif;
+  }
+  .font-cinzel {
+    font-family: 'Cinzel', serif;
+  }
+  .text-rosegold {
+    color: #e8c39e;
+    background: linear-gradient(135deg, #fcd5ce 0%, #fad0c4 40%, #e29578 80%, #f4a261 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Remix TRIPLETS Band",
+  "description": "Kungnoi Y. Official Debut Album 'ถ้าเธอยังไม่ลืม' - 10-Track Music Player & Artist Gallery",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
