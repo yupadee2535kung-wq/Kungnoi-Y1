@@ -34,6 +34,7 @@ interface SongContextType {
   logoutAdmin: () => void;
   addSong: (newSongData: Omit<Song, 'id' | 'trackNumber'>) => Song;
   editSong: (songId: string, updatedData: Partial<Song>) => void;
+  updateMultipleSongs: (updates: { id: string; data: Partial<Song> }[]) => void;
   deleteSong: (songId: string) => boolean;
   resetSongs: () => void;
 
@@ -521,6 +522,16 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
     );
   };
 
+  const updateMultipleSongs = (updates: { id: string; data: Partial<Song> }[]) => {
+    const updateMap = new Map(updates.map(u => [u.id, u.data]));
+    setSongs(prev =>
+      prev.map(song => {
+        const patch = updateMap.get(song.id);
+        return patch ? { ...song, ...patch } : song;
+      })
+    );
+  };
+
   const deleteSong = (songId: string): boolean => {
     if (songs.length <= 1) {
       alert('ไม่สามารถลบเพลงทั้งหมดได้ ต้องมีอย่างน้อย 1 เพลงในระบบ');
@@ -571,6 +582,7 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
         logoutAdmin,
         addSong,
         editSong,
+        updateMultipleSongs,
         deleteSong,
         resetSongs,
         githubAudioRepo,

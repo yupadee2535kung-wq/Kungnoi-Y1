@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered, Upload, Link, Radio, RefreshCw, Globe, Check } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered, Upload, Link, Radio, RefreshCw, Globe, Check, Edit3, Plus, Trash2 } from 'lucide-react';
 import { ALBUM_INFO } from '../data/bandData';
 import { Song } from '../types';
 import { useSongs } from '../context/SongContext';
 import { useBandImages } from '../context/ImageContext';
-import { getYouTubeWatchUrl, getYouTubeSequentialEmbedUrl } from '../utils/youtubeUtils';
+import { getYouTubeWatchUrl, getYouTubeSequentialEmbedUrl, getYouTubeThumbnailUrl, getYouTubeVideoId } from '../utils/youtubeUtils';
 import { generateGitHubAudioUrls } from '../utils/audioSynth';
 
 interface MusicPlayerSectionProps {
@@ -40,7 +40,16 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     setGithubAudioRepo,
     applyGithubAudioToAllSongs,
     editSong,
+    updateMultipleSongs,
   } = useSongs();
+
+  const currentTrackId = propCurrentTrackId || contextTrackId;
+  const onSelectTrack = (id: string) => {
+    if (propOnSelectTrack) {
+      propOnSelectTrack(id);
+    }
+    setCurrentTrackId(id);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTargetSongId, setUploadTargetSongId] = useState<string | null>(null);
@@ -49,6 +58,195 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
   const [isGithubModalOpen, setIsGithubModalOpen] = useState(false);
   const [customRepoInput, setCustomRepoInput] = useState(githubAudioRepo || 'yupadee2535/triplets-band-website');
   const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+
+  // MV Video URLs Management Modal State
+  const [isMvModalOpen, setIsMvModalOpen] = useState(false);
+  const [mvModalTab, setMvModalTab] = useState<'batch' | 'multiline' | 'single'>('batch');
+  const [mvEditSongId, setMvEditSongId] = useState<string>('');
+  const [mvUrlsInput, setMvUrlsInput] = useState<string[]>(['']);
+  const [batchUrlsInput, setBatchUrlsInput] = useState<Record<string, string>>({});
+  const [multilineMvInput, setMultilineMvInput] = useState<string>('');
+  const [mvSaveSuccessMsg, setMvSaveSuccessMsg] = useState<string | null>(null);
+  const [inlineMvInput, setInlineMvInput] = useState<string>('');
+  const [inlineMvSuccess, setInlineMvSuccess] = useState<string | null>(null);
+
+  // Sync inline MV input with currently active song
+  useEffect(() => {
+    const active = songs.find((s) => s.id === currentTrackId) || songs[0];
+    if (active) {
+      const currentUrl = active.youtubeUrl || (active.youtubeUrls && active.youtubeUrls[0]) || '';
+      setInlineMvInput(currentUrl);
+    }
+  }, [currentTrackId, songs]);
+
+  const openMvEditModal = (songId?: string, initialTab: 'batch' | 'multiline' | 'single' = 'batch') => {
+    const targetId = songId || currentTrackId;
+    const targetSong = songs.find((s) => s.id === targetId) || songs[0];
+    setMvEditSongId(targetSong.id);
+    setMvModalTab(initialTab);
+
+    // Initialize single song URLs
+    let initialUrls: string[] = [];
+    if (Array.isArray(targetSong.youtubeUrls) && targetSong.youtubeUrls.length > 0) {
+      initialUrls = [...targetSong.youtubeUrls];
+    } else if (targetSong.youtubeUrl && targetSong.youtubeUrl.trim()) {
+      initialUrls = [targetSong.youtubeUrl.trim()];
+    } else {
+      initialUrls = [''];
+    }
+    setMvUrlsInput(initialUrls);
+
+    // Initialize batch URLs for all songs
+    const batchMap: Record<string, string> = {};
+    const multiLines: string[] = [];
+    songs.forEach((s) => {
+      const u = s.youtubeUrl || (s.youtubeUrls && s.youtubeUrls[0]) || '';
+      batchMap[s.id] = u;
+      multiLines.push(u);
+    });
+    setBatchUrlsInput(batchMap);
+    setMultilineMvInput(multiLines.join('\n'));
+
+    setIsMvModalOpen(true);
+  };
+
+  const handleSaveInlineMv = () => {
+    const active = songs.find((s) => s.id === currentTrackId) || songs[0];
+    if (!active) return;
+
+    const cleanUrl = inlineMvInput.trim();
+    editSong(active.id, {
+      youtubeUrl: cleanUrl,
+      youtubeUrls: cleanUrl ? [cleanUrl] : [],
+    });
+
+    setVisualMode('mv');
+    setInlineMvSuccess(cleanUrl ? '✅ บันทึกลิงก์ MV และเปิดเล่นทันที!' : '🗑️ ล้างลิงก์ MV ของเพลงนี้แล้ว');
+    setTimeout(() => setInlineMvSuccess(null), 2500);
+  };
+
+  const handleSaveBatchMvUrls = () => {
+    const updates = songs.map((s) => {
+      const u = (batchUrlsInput[s.id] || '').trim();
+      return {
+        id: s.id,
+        data: {
+          youtubeUrl: u,
+          youtubeUrls: u ? [u] : [],
+        },
+      };
+    });
+
+    updateMultipleSongs(updates);
+    setMvSaveSuccessMsg('✅ บันทึกลิงก์ YouTube MV สำหรับทุกเพลงเรียบร้อยแล้ว!');
+    setTimeout(() => {
+      setMvSaveSuccessMsg(null);
+      setIsMvModalOpen(false);
+    }, 1500);
+  };
+
+  const handleClearAllBatchUrls = () => {
+    if (window.confirm('คุณต้องการล้างลิงก์ YouTube MV ของทุกเพลงใช่หรือไม่?')) {
+      const emptyBatch: Record<string, string> = {};
+      songs.forEach((s) => {
+        emptyBatch[s.id] = '';
+      });
+      setBatchUrlsInput(emptyBatch);
+      setMultilineMvInput('');
+      const updates = songs.map((s) => ({
+        id: s.id,
+        data: {
+          youtubeUrl: '',
+          youtubeUrls: [],
+        },
+      }));
+      updateMultipleSongs(updates);
+      setMvSaveSuccessMsg('🗑️ ล้างลิงก์ YouTube MV ของทุกเพลงแล้ว');
+      setTimeout(() => setMvSaveSuccessMsg(null), 2500);
+    }
+  };
+
+  const handleApplyMultilineToBatch = () => {
+    const lines = multilineMvInput
+      .split('\n')
+      .map((l) => l.trim());
+
+    const newBatchMap: Record<string, string> = {};
+    const updates = songs.map((song, idx) => {
+      const url = lines[idx] || '';
+      newBatchMap[song.id] = url;
+      return {
+        id: song.id,
+        data: {
+          youtubeUrl: url,
+          youtubeUrls: url ? [url] : [],
+        },
+      };
+    });
+
+    setBatchUrlsInput(newBatchMap);
+    updateMultipleSongs(updates);
+    setMvSaveSuccessMsg(`✅ นำเข้าลิงก์ MV ให้กับทั้ง ${songs.length} เพลงเรียบร้อยแล้ว!`);
+    setTimeout(() => {
+      setMvSaveSuccessMsg(null);
+      setIsMvModalOpen(false);
+    }, 1500);
+  };
+
+  const handleSelectMvEditSong = (songId: string) => {
+    setMvEditSongId(songId);
+    const targetSong = songs.find((s) => s.id === songId);
+    if (!targetSong) return;
+
+    let initialUrls: string[] = [];
+    if (Array.isArray(targetSong.youtubeUrls) && targetSong.youtubeUrls.length > 0) {
+      initialUrls = [...targetSong.youtubeUrls];
+    } else if (targetSong.youtubeUrl && targetSong.youtubeUrl.trim()) {
+      initialUrls = [targetSong.youtubeUrl.trim()];
+    } else {
+      initialUrls = [''];
+    }
+    setMvUrlsInput(initialUrls);
+  };
+
+  const handleSaveMvUrls = () => {
+    const cleanUrls = mvUrlsInput
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0);
+
+    const primaryUrl = cleanUrls[0] || '';
+    editSong(mvEditSongId, {
+      youtubeUrl: primaryUrl,
+      youtubeUrls: cleanUrls,
+    });
+
+    setMvSaveSuccessMsg('✅ บันทึกลิงก์ YouTube MV เรียบร้อยแล้ว!');
+    setTimeout(() => {
+      setMvSaveSuccessMsg(null);
+      setIsMvModalOpen(false);
+    }, 1500);
+  };
+
+  const handleAddMvUrlField = () => {
+    if (mvUrlsInput.length < 10) {
+      setMvUrlsInput((prev) => [...prev, '']);
+    }
+  };
+
+  const handleRemoveMvUrlField = (index: number) => {
+    setMvUrlsInput((prev) => {
+      const updated = prev.filter((_, i) => i !== index);
+      return updated.length > 0 ? updated : [''];
+    });
+  };
+
+  const handleUpdateMvUrlField = (index: number, val: string) => {
+    setMvUrlsInput((prev) => {
+      const updated = [...prev];
+      updated[index] = val;
+      return updated;
+    });
+  };
 
   const handleAudioFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -67,14 +265,6 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
   const triggerUploadForSong = (songId: string) => {
     setUploadTargetSongId(songId);
     fileInputRef.current?.click();
-  };
-
-  const currentTrackId = propCurrentTrackId || contextTrackId;
-  const onSelectTrack = (id: string) => {
-    if (propOnSelectTrack) {
-      propOnSelectTrack(id);
-    }
-    setCurrentTrackId(id);
   };
 
   const { images, slideshowList } = useBandImages();
@@ -119,7 +309,13 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     audioParams: { bpm: 120, key: 'C', style: 'melancholic_rock' as const, rootNote: 60 }
   };
 
-  // Valid YouTube URLs list for active song (up to 5 URLs)
+  // Compute previous and next songs for seamless skipping across tracks
+  const currentSongIndex = songs.findIndex((s) => s.id === activeSong.id);
+  const safeCurrentIdx = currentSongIndex !== -1 ? currentSongIndex : 0;
+  const prevSong = songs[(safeCurrentIdx - 1 + songs.length) % songs.length];
+  const nextSong = songs[(safeCurrentIdx + 1) % songs.length];
+
+  // Valid YouTube URLs list for active song (up to 10 URLs)
   const activeSongMvUrls: string[] = useMemo(() => {
     if (Array.isArray(activeSong.youtubeUrls) && activeSong.youtubeUrls.length > 0) {
       return activeSong.youtubeUrls.filter((u) => u && typeof u === 'string' && u.trim().length > 0);
@@ -138,6 +334,32 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
       setCurrentSlideIndex(songIndex);
     }
   }, [activeSong.id]);
+
+  // MV Skip navigation handlers
+  const handleSkipToSong = (songId: string) => {
+    onSelectTrack(songId);
+    setCurrentMvIndex(0);
+    setVisualMode('mv');
+    if (isPlaying) {
+      togglePlayPause();
+    }
+  };
+
+  const handleMvSkipPrev = () => {
+    if (activeSongMvUrls.length > 1 && currentMvIndex > 0) {
+      setCurrentMvIndex((prev) => prev - 1);
+    } else {
+      handleSkipToSong(prevSong.id);
+    }
+  };
+
+  const handleMvSkipNext = () => {
+    if (activeSongMvUrls.length > 1 && currentMvIndex < activeSongMvUrls.length - 1) {
+      setCurrentMvIndex((prev) => prev + 1);
+    } else {
+      handleSkipToSong(nextSong.id);
+    }
+  };
 
   const handleTogglePlay = (song: Song) => {
     if (!song) return;
@@ -249,7 +471,7 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
 
             {/* Visual Display Box (Square 1:1) */}
             {visualMode === 'mv' ? (
-              /* YouTube MV Video Player with Sequential 10-URL support */
+              /* YouTube MV Video Player with Sequential 10-URL support & Skip Controls */
               <div className="relative aspect-square rounded-2xl overflow-hidden shadow-2xl border border-neutral-800 bg-neutral-950 flex flex-col justify-center items-center group">
                 {activeSongMvUrls.length > 0 && getYouTubeSequentialEmbedUrl(activeSongMvUrls, currentMvIndex) ? (
                   <div className="w-full h-full relative flex flex-col">
@@ -264,30 +486,83 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                       />
                     </div>
 
-                    {/* Top Floating Info Bar in MV Mode */}
-                    <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-20">
-                      {/* Left: Sequence badge */}
+                    {/* Left & Right Floating Overlay Skip Buttons (Quick Skip on Video) */}
+                    <button
+                      type="button"
+                      onClick={handleMvSkipPrev}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl bg-neutral-950/80 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer z-20 opacity-70 group-hover:opacity-100 hover:scale-110 flex items-center justify-center"
+                      title={`ข้ามไปเพลงก่อนหน้า: แทร็ก #${prevSong.trackNumber} ${prevSong.titleThai}`}
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleMvSkipNext}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl bg-neutral-950/80 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer z-20 opacity-70 group-hover:opacity-100 hover:scale-110 flex items-center justify-center"
+                      title={`ข้ามไปเพลงถัดไป: แทร็ก #${nextSong.trackNumber} ${nextSong.titleThai}`}
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
+
+                    {/* Top Floating Info & Skip Bar in MV Mode */}
+                    <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-20 gap-1.5">
+                      {/* Left: Track badge & Sequence */}
                       <div className="pointer-events-auto flex items-center gap-1.5 bg-neutral-950/90 border border-neutral-700/90 text-white text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl shadow-xl backdrop-blur-md">
-                        <Youtube className="w-3.5 h-3.5 text-red-500" />
-                        <span>ลำดับ {currentMvIndex + 1}/{activeSongMvUrls.length}</span>
+                        <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                        <span className="truncate max-w-[110px] sm:max-w-[150px]">
+                          #{activeSong.trackNumber} {activeSong.titleThai}
+                        </span>
                         {activeSongMvUrls.length > 1 && (
-                          <span className="text-[10px] text-red-400 font-normal hidden sm:inline">
-                            (เล่นตามลำดับ)
+                          <span className="text-[10px] text-red-400 bg-red-950/80 border border-red-800/80 px-1 py-0.2 rounded shrink-0">
+                            {currentMvIndex + 1}/{activeSongMvUrls.length}
                           </span>
                         )}
                       </div>
 
+                      {/* Center: Quick Skip Buttons */}
+                      <div className="pointer-events-auto flex items-center gap-1 bg-neutral-950/90 border border-neutral-700/90 rounded-xl p-0.5 shadow-xl backdrop-blur-md">
+                        <button
+                          type="button"
+                          onClick={handleMvSkipPrev}
+                          className="flex items-center gap-1 text-[11px] font-bold text-neutral-300 hover:text-white hover:bg-neutral-800 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                          title={`ข้ามไปเพลงก่อนหน้า (${prevSong.titleThai})`}
+                        >
+                          <SkipBack className="w-3 h-3 text-red-400" />
+                          <span className="hidden sm:inline">ก่อนหน้า</span>
+                        </button>
+                        <span className="text-neutral-600 text-xs">|</span>
+                        <button
+                          type="button"
+                          onClick={handleMvSkipNext}
+                          className="flex items-center gap-1 text-[11px] font-bold text-neutral-300 hover:text-white hover:bg-neutral-800 px-2 py-0.5 rounded-lg transition-colors cursor-pointer"
+                          title={`ข้ามไปเพลงถัดไป (${nextSong.titleThai})`}
+                        >
+                          <span className="hidden sm:inline">ถัดไป</span>
+                          <SkipForward className="w-3 h-3 text-red-400" />
+                        </button>
+                      </div>
+
                       {/* Right: Actions */}
-                      <div className="pointer-events-auto flex items-center gap-1.5 opacity-90 hover:opacity-100 transition-opacity">
+                      <div className="pointer-events-auto flex items-center gap-1 opacity-90 hover:opacity-100 transition-opacity">
+                        <button
+                          type="button"
+                          onClick={() => openMvEditModal(activeSong.id)}
+                          className="flex items-center gap-1 bg-neutral-950/90 hover:bg-neutral-800 border border-neutral-700 hover:border-red-500 text-neutral-200 hover:text-white text-[11px] font-bold px-2 py-1 rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer"
+                          title="แก้ไขหรือเพิ่มลิงก์ YouTube MV เพลงนี้"
+                        >
+                          <Edit3 className="w-3 h-3 text-amber-400" />
+                          <span className="hidden md:inline">แก้ไข MV</span>
+                        </button>
+
                         {getYouTubeWatchUrl(activeSongMvUrls[currentMvIndex] || activeSongMvUrls[0]) && (
                           <a
                             href={getYouTubeWatchUrl(activeSongMvUrls[currentMvIndex] || activeSongMvUrls[0])!}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center gap-1 bg-neutral-950/90 hover:bg-red-600 border border-neutral-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-xl shadow-xl backdrop-blur-md transition-all"
+                            className="flex items-center gap-1 bg-neutral-950/90 hover:bg-red-600 border border-neutral-700 text-white text-[11px] font-bold px-2 py-1 rounded-xl shadow-xl backdrop-blur-md transition-all"
                           >
                             <ExternalLink className="w-3 h-3" />
-                            <span className="hidden sm:inline">YouTube</span>
                           </a>
                         )}
                       </div>
@@ -300,16 +575,17 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                         <button
                           type="button"
                           onClick={() => setCurrentMvIndex((prev) => (prev - 1 + activeSongMvUrls.length) % activeSongMvUrls.length)}
-                          className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                          className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1 text-[11px]"
                           title="วิดีโอก่อนหน้า"
                         >
-                          <ChevronLeft className="w-4 h-4" />
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">ก่อนหน้า</span>
                         </button>
 
                         {/* Numbered Pills 1 to 10 with horizontal scroll */}
-                        <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-[calc(100%-60px)] scrollbar-none">
+                        <div className="flex items-center gap-1 overflow-x-auto py-0.5 max-w-[calc(100%-120px)] scrollbar-none">
                           <span className="text-[10px] font-mono text-neutral-400 mr-1 hidden md:inline flex-shrink-0">
-                            ลำดับ:
+                            วิดีโอ:
                           </span>
                           {activeSongMvUrls.map((_, idx) => (
                             <button
@@ -317,10 +593,10 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                               type="button"
                               onClick={() => setCurrentMvIndex(idx)}
                               className={`px-2 py-0.5 rounded-md text-[11px] font-mono font-bold transition-all cursor-pointer flex items-center gap-1 flex-shrink-0 ${
-                                currentMvIndex === idx
-                                  ? 'bg-red-600 text-white shadow-md shadow-red-950/80 border border-red-400 scale-105'
-                                  : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800'
-                              }`}
+                              currentMvIndex === idx
+                                ? 'bg-red-600 text-white shadow-md shadow-red-950/80 border border-red-400 scale-105'
+                                : 'bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white border border-neutral-800'
+                            }`}
                               title={`สลับไปเล่นวิดีโอลำดับที่ ${idx + 1}`}
                             >
                               <span>#{idx + 1}</span>
@@ -335,10 +611,11 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                         <button
                           type="button"
                           onClick={() => setCurrentMvIndex((prev) => (prev + 1) % activeSongMvUrls.length)}
-                          className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex-shrink-0"
+                          className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer flex-shrink-0 flex items-center gap-1 text-[11px]"
                           title="วิดีโอถัดไป"
                         >
-                          <ChevronRight className="w-4 h-4" />
+                          <span className="hidden sm:inline">ถัดไป</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     )}
@@ -351,20 +628,29 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                     </div>
                     <div>
                       <h4 className="text-base font-bold text-white mb-1">
-                        โหมดรูปภาพและเครื่องเล่นเพลง
+                        โหมด MV: แทร็ก #{activeSong.trackNumber} "{activeSong.titleThai}"
                       </h4>
                       <p className="text-xs text-neutral-400 leading-relaxed font-sans">
-                        เพลง <span className="text-red-400 font-semibold">"{activeSong.titleThai}"</span> กำลังเล่นเสียงเพลงคุณภาพสูง พร้อมภาพศิลปิน Kungnoi Y.
+                        ยังไม่ได้ใส่ลิงก์ YouTube MV สำหรับเพลงนี้ สามารถกดใส่ลิงก์ หรือกดปุ่มด้านล่างเพื่อข้ามไปดู MV เพลงอื่นได้ทันที
                       </p>
                     </div>
 
-                    <div className="pt-2 flex items-center justify-center">
+                    <div className="pt-2 flex flex-wrap items-center justify-center gap-2">
                       <button
                         type="button"
-                        onClick={() => setVisualMode('slideshow')}
-                        className="text-xs bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-white px-4 py-2 rounded-xl cursor-pointer font-medium transition-colors"
+                        onClick={() => openMvEditModal(activeSong.id)}
+                        className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-4 py-2 rounded-xl cursor-pointer transition-all flex items-center gap-1.5 shadow-lg shadow-red-950"
                       >
-                        ← สลับไปดูภาพสไลด์โชว์
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>ใส่ลิงก์ YouTube MV เพลงนี้</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleMvSkipNext}
+                        className="text-xs bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 text-white px-3.5 py-2 rounded-xl cursor-pointer font-medium transition-colors flex items-center gap-1"
+                      >
+                        <span>ข้ามไปเพลงถัดไป ⏭</span>
                       </button>
                     </div>
                   </div>
@@ -491,6 +777,134 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                       />
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Quick MV Track Switcher & Skip Ribbon (When in MV mode) */}
+            {visualMode === 'mv' && (
+              <div className="bg-neutral-950/90 border border-neutral-800/90 rounded-2xl p-3 space-y-2 shadow-xl animate-fadeIn">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+                    <SkipForward className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                    <span>กดข้ามเพลง MV ({songs.length} เพลง):</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={handleMvSkipPrev}
+                      className="px-2 py-0.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[11px] font-bold text-neutral-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                      title={`ข้ามไปเพลงก่อนหน้า: ${prevSong.titleThai}`}
+                    >
+                      <SkipBack className="w-3 h-3 text-red-400" />
+                      <span>ก่อนหน้า</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleMvSkipNext}
+                      className="px-2 py-0.5 rounded-lg bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-[11px] font-bold text-neutral-300 hover:text-white flex items-center gap-1 transition-colors cursor-pointer"
+                      title={`ข้ามไปเพลงถัดไป: ${nextSong.titleThai}`}
+                    >
+                      <span>ถัดไป</span>
+                      <SkipForward className="w-3 h-3 text-red-400" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Horizontal Scrollable Track Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                  {songs.map((song) => {
+                    const isCurrent = song.id === activeSong.id;
+                    const hasMv = (Array.isArray(song.youtubeUrls) && song.youtubeUrls.some((u) => u && u.trim().length > 0)) || (song.youtubeUrl && song.youtubeUrl.trim().length > 0);
+                    return (
+                      <button
+                        key={song.id}
+                        type="button"
+                        onClick={() => handleSkipToSong(song.id)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-mono font-bold whitespace-nowrap transition-all cursor-pointer flex-shrink-0 ${
+                          isCurrent
+                            ? 'bg-gradient-to-r from-red-600 to-rose-600 text-white shadow-lg shadow-red-950/80 border border-red-400 scale-[1.02]'
+                            : hasMv
+                            ? 'bg-neutral-900/90 hover:bg-neutral-800 text-neutral-300 hover:text-white border border-red-900/50 hover:border-red-500'
+                            : 'bg-neutral-900/60 hover:bg-neutral-800 text-neutral-400 hover:text-neutral-200 border border-neutral-800'
+                        }`}
+                        title={`กดเพื่อข้ามไปดู MV เพลง #${song.trackNumber} ${song.titleThai}`}
+                      >
+                        <span>#{song.trackNumber}</span>
+                        <span className="font-sans font-medium">{song.titleThai}</span>
+                        {hasMv && (
+                          <span className={`text-[10px] px-1 py-0.2 rounded font-mono ${isCurrent ? 'bg-red-950/80 text-white' : 'text-red-400 bg-red-950/40'}`}>
+                            🎬
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Inline Direct MV URL Bar (when in MV mode) */}
+            {visualMode === 'mv' && (
+              <div className="bg-neutral-900/90 border border-neutral-800/90 rounded-2xl p-3 space-y-2 shadow-lg animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Youtube className="w-4 h-4 text-red-500" />
+                    <span className="text-xs font-bold text-white">
+                      ลิงก์ YouTube MV เพลง "{activeSong.titleThai}":
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => openMvEditModal(activeSong.id, 'batch')}
+                    className="text-[11px] font-bold text-amber-400 hover:text-amber-300 flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <ListOrdered className="w-3.5 h-3.5" />
+                    <span>เปิดตารางใส่ครบ 10 เพลง</span>
+                  </button>
+                </div>
+
+                {inlineMvSuccess && (
+                  <div className="text-xs text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-3 py-1.5 rounded-xl flex items-center gap-1.5 animate-fadeIn">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>{inlineMvSuccess}</span>
+                  </div>
+                )}
+
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={inlineMvInput}
+                    onChange={(e) => setInlineMvInput(e.target.value)}
+                    placeholder="วางลิงก์ YouTube MV เช่น https://www.youtube.com/watch?v=..."
+                    className="flex-1 bg-neutral-950 border border-neutral-700 focus:border-red-500 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 font-mono focus:outline-none"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSaveInlineMv();
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveInlineMv}
+                    className="bg-red-600 hover:bg-red-500 text-white font-bold text-xs px-3.5 py-2 rounded-xl transition-colors cursor-pointer shrink-0 flex items-center gap-1 shadow-md shadow-red-950"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>บันทึก MV</span>
+                  </button>
+                  {inlineMvInput.trim().length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInlineMvInput('');
+                        editSong(activeSong.id, { youtubeUrl: '', youtubeUrls: [] });
+                        setInlineMvSuccess('🗑️ ล้างลิงก์ MV เพลงนี้แล้ว');
+                        setTimeout(() => setInlineMvSuccess(null), 2000);
+                      }}
+                      className="bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-red-400 p-2 rounded-xl border border-neutral-700 transition-colors cursor-pointer shrink-0"
+                      title="ลบลิงก์ MV เพลงนี้"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -706,10 +1120,10 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 {/* Center: Prev, Play/Pause, Next */}
                 <div className="flex items-center gap-2 sm:gap-3">
                   <button
-                    onClick={playPrev}
+                    onClick={visualMode === 'mv' ? handleMvSkipPrev : playPrev}
                     className="p-2.5 sm:p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
                     aria-label="Previous Track"
-                    title="เพลงก่อนหน้า"
+                    title={visualMode === 'mv' ? `ข้ามไป MV ก่อนหน้า (${prevSong.titleThai})` : 'เพลงก่อนหน้า'}
                   >
                     <SkipBack className="w-4 sm:w-5 h-4 sm:h-5 fill-current" />
                   </button>
@@ -727,10 +1141,10 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                   </button>
 
                   <button
-                    onClick={playNext}
+                    onClick={visualMode === 'mv' ? handleMvSkipNext : playNext}
                     className="p-2.5 sm:p-3 rounded-full bg-neutral-800 hover:bg-neutral-700 text-white transition-all cursor-pointer hover:scale-105 active:scale-95"
                     aria-label="Next Track"
-                    title="เพลงถัดไป"
+                    title={visualMode === 'mv' ? `ข้ามไป MV ถัดไป (${nextSong.titleThai})` : 'เพลงถัดไป'}
                   >
                     <SkipForward className="w-4 sm:w-5 h-4 sm:h-5 fill-current" />
                   </button>
@@ -793,13 +1207,24 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
             
             {/* Tracklist Table */}
             <div className="bg-neutral-900/80 border border-neutral-800 rounded-3xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-lg font-bold text-white flex items-center gap-2">
                   <span>รายชื่อเพลงในอัลบั้ม ({songs.length} เพลง)</span>
                 </h3>
-                <span className="text-xs font-mono text-neutral-400">
-                  Total: {songs.length} Tracks
-                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => openMvEditModal(activeSong.id)}
+                    className="text-[11px] font-mono bg-neutral-800 hover:bg-red-950 text-neutral-300 hover:text-red-300 border border-neutral-700 hover:border-red-700 px-2.5 py-1 rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors"
+                    title="จัดการ / ใส่ลิงก์ YouTube MV ของเพลงในอัลบั้ม"
+                  >
+                    <Youtube className="w-3.5 h-3.5 text-red-500" />
+                    <span>ใส่ลิงก์ MV 🎬</span>
+                  </button>
+                  <span className="text-xs font-mono text-neutral-400">
+                    Total: {songs.length} Tracks
+                  </span>
+                </div>
               </div>
 
               <div className="divide-y divide-neutral-800/80">
@@ -860,6 +1285,18 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                       </div>
 
                       <div className="flex items-center gap-2 sm:gap-3">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openMvEditModal(song.id);
+                          }}
+                          className="p-1.5 rounded-lg text-neutral-500 hover:text-red-400 hover:bg-neutral-800 transition-colors opacity-60 hover:opacity-100 cursor-pointer"
+                          title="แก้ไขหรือใส่ลิงก์ YouTube MV สำหรับเพลงนี้"
+                        >
+                          <Youtube className="w-3.5 h-3.5" />
+                        </button>
+
                         <button
                           type="button"
                           onClick={(e) => {
@@ -1109,6 +1546,416 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 เสร็จสิ้น / ปิดหน้าต่าง
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* YouTube MV URL Management Modal */}
+      {isMvModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/85 backdrop-blur-md animate-fadeIn">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-3xl max-w-2xl w-full p-5 sm:p-7 shadow-2xl space-y-5 text-neutral-200 max-h-[92vh] flex flex-col">
+            
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-red-950/90 border border-red-700/80 flex items-center justify-center text-red-500 shadow-lg shadow-red-950/60">
+                  <Youtube className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    จัดการลิงก์ YouTube MV ของวง
+                    <span className="text-xs bg-red-950 text-red-300 border border-red-800 px-2 py-0.5 rounded-full font-mono">
+                      ง่าย & รวดเร็ว
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    ใส่ URL หรือลิงก์ YouTube MV เพลงของวง Kungnoi Y. ได้ครบทุกเพลงในหน้าเดียว
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsMvModalOpen(false)}
+                className="text-neutral-400 hover:text-white p-2 rounded-xl hover:bg-neutral-800 transition-colors cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Success alert message */}
+            {mvSaveSuccessMsg && (
+              <div className="bg-emerald-950/90 border border-emerald-600 text-emerald-200 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2 animate-fadeIn shrink-0 shadow-lg">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span className="font-semibold">{mvSaveSuccessMsg}</span>
+              </div>
+            )}
+
+            {/* Tabs Navigation */}
+            <div className="flex items-center gap-1.5 p-1 bg-neutral-950 rounded-2xl border border-neutral-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setMvModalTab('batch')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  mvModalTab === 'batch'
+                    ? 'bg-red-600 text-white shadow-md shadow-red-950'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+                }`}
+              >
+                <ListOrdered className="w-3.5 h-3.5" />
+                <span>ตารางครบ 10 เพลง (แนะนำ)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMvModalTab('multiline')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  mvModalTab === 'multiline'
+                    ? 'bg-red-600 text-white shadow-md shadow-red-950'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>วางรวมหลายบรรทัด</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setMvModalTab('single')}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  mvModalTab === 'single'
+                    ? 'bg-red-600 text-white shadow-md shadow-red-950'
+                    : 'text-neutral-400 hover:text-white hover:bg-neutral-900'
+                }`}
+              >
+                <Video className="w-3.5 h-3.5" />
+                <span>ตั้งค่าทีละเพลง</span>
+              </button>
+            </div>
+
+            {/* Modal Body Scroll Area */}
+            <div className="flex-1 overflow-y-auto space-y-4 pr-1 scrollbar-thin scrollbar-thumb-neutral-800">
+              
+              {/* TAB 1: BATCH ALL 10 SONGS (DEFAULT & EASIEST) */}
+              {mvModalTab === 'batch' && (
+                <div className="space-y-3.5">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-neutral-950/60 p-3 rounded-2xl border border-neutral-800/80">
+                    <div className="text-xs text-neutral-300">
+                      <span>สถานะ: </span>
+                      <strong className="text-red-400 font-mono">
+                        {songs.filter((s) => (batchUrlsInput[s.id] || '').trim().length > 0).length} / {songs.length} เพลง
+                      </strong>
+                      <span className="text-neutral-500 ml-2">(วางลิงก์ในช่องของแต่ละเพลงได้เลย)</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleClearAllBatchUrls}
+                        className="text-[11px] text-neutral-400 hover:text-red-400 bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 px-2.5 py-1 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>ล้างทุกลิงก์</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2.5">
+                    {songs.map((song) => {
+                      const currentVal = batchUrlsInput[song.id] || '';
+                      const videoId = getYouTubeVideoId(currentVal);
+                      const thumb = videoId ? `https://img.youtube.com/vi/${videoId}/default.jpg` : null;
+
+                      return (
+                        <div
+                          key={song.id}
+                          className="bg-neutral-950/70 hover:bg-neutral-950 border border-neutral-800 hover:border-neutral-700 rounded-2xl p-3 space-y-2 transition-all"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="w-7 h-7 rounded-xl bg-neutral-900 border border-neutral-800 flex items-center justify-center text-xs font-mono font-bold text-amber-400 shrink-0">
+                                {String(song.trackNumber).padStart(2, '0')}
+                              </span>
+                              <span className="text-xs font-bold text-white truncate">
+                                {song.titleThai}
+                              </span>
+                              <span className="text-[11px] text-neutral-500 font-mono truncate hidden sm:inline">
+                                ({song.titleEng})
+                              </span>
+                            </div>
+
+                            {/* Status badge */}
+                            {videoId ? (
+                              <span className="text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800 px-2 py-0.5 rounded-full font-mono shrink-0">
+                                ✓ พร้อมเล่น
+                              </span>
+                            ) : currentVal.trim() ? (
+                              <span className="text-[10px] bg-amber-950 text-amber-400 border border-amber-800 px-2 py-0.5 rounded-full font-mono shrink-0">
+                                ⚠️ รูปแบบลิงก์
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-neutral-500 font-mono shrink-0">
+                                (ยังไม่ใส่)
+                              </span>
+                            )}
+                          </div>
+
+                          {/* URL Input field */}
+                          <div className="flex items-center gap-2">
+                            {thumb && (
+                              <img
+                                src={thumb}
+                                alt="thumb"
+                                className="w-10 h-7 object-cover rounded-lg border border-neutral-800 shrink-0"
+                                referrerPolicy="no-referrer"
+                              />
+                            )}
+                            <input
+                              type="text"
+                              value={currentVal}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setBatchUrlsInput((prev) => ({ ...prev, [song.id]: val }));
+                              }}
+                              placeholder={`วางลิงก์ YouTube MV เพลง ${song.titleThai}...`}
+                              className="flex-1 bg-neutral-900 border border-neutral-700/80 focus:border-red-500 rounded-xl px-3 py-1.5 text-xs text-white placeholder-neutral-500 font-mono focus:outline-none"
+                            />
+                            {currentVal.trim() && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBatchUrlsInput((prev) => ({ ...prev, [song.id]: '' }));
+                                }}
+                                className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer shrink-0"
+                                title="ล้างลิงก์เพลงนี้"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            {videoId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  // Save this song and switch to it in MV mode
+                                  editSong(song.id, {
+                                    youtubeUrl: currentVal.trim(),
+                                    youtubeUrls: [currentVal.trim()],
+                                  });
+                                  setCurrentTrackId(song.id);
+                                  setVisualMode('mv');
+                                  setIsMvModalOpen(false);
+                                }}
+                                className="px-2 py-1 bg-red-950 hover:bg-red-900 border border-red-800 text-red-300 hover:text-white rounded-lg text-[11px] font-bold transition-colors cursor-pointer shrink-0 flex items-center gap-1"
+                                title="บันทึกและเปิดเล่นเพลงนี้ทันที"
+                              >
+                                <Play className="w-3 h-3" />
+                                <span className="hidden sm:inline">เล่น</span>
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: MULTI-LINE PASTE */}
+              {mvModalTab === 'multiline' && (
+                <div className="space-y-4">
+                  <div className="bg-neutral-950/80 rounded-2xl p-3.5 border border-neutral-800 space-y-2">
+                    <h4 className="text-xs font-bold text-white flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <span>วางลิงก์ YouTube หลายบรรทัดพร้อมกัน (1 บรรทัด = 1 เพลง)</span>
+                    </h4>
+                    <p className="text-xs text-neutral-400">
+                      คัดลอกลิงก์ YouTube เรียงตามลำดับแทร็ก 1 ถึง {songs.length} แล้วกดวางด้านล่าง ระบบจะจัดใส่ให้ครบทุกเพลงอัตโนมัติ
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-xs text-neutral-400">
+                      <label className="font-bold text-neutral-300">
+                        กล่องข้อความสำหรับวางลิงก์:
+                      </label>
+                      <span className="font-mono">
+                        {multilineMvInput.split('\n').filter((l) => l.trim()).length} บรรทัด
+                      </span>
+                    </div>
+
+                    <textarea
+                      rows={10}
+                      value={multilineMvInput}
+                      onChange={(e) => setMultilineMvInput(e.target.value)}
+                      placeholder={`https://www.youtube.com/watch?v=... (เพลงที่ 1: ${songs[0]?.titleThai})\nhttps://www.youtube.com/watch?v=... (เพลงที่ 2: ${songs[1]?.titleThai})\nhttps://www.youtube.com/watch?v=... (เพลงที่ 3: ${songs[2]?.titleThai})\n...`}
+                      className="w-full bg-neutral-950 border border-neutral-700 rounded-2xl p-3.5 text-xs text-white placeholder-neutral-600 font-mono focus:outline-none focus:border-red-500 leading-relaxed resize-y"
+                    />
+                  </div>
+
+                  <div className="bg-neutral-950 rounded-2xl p-3 text-[11px] text-neutral-400 border border-neutral-800 space-y-1">
+                    <div className="font-bold text-amber-400">ตัวอย่างลำดับเพลง:</div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 font-mono text-[10px] text-neutral-500">
+                      {songs.map((s, i) => (
+                        <div key={s.id} className="truncate">
+                          บรรทัดที่ {i + 1} ➔ แทร็ก {s.trackNumber}: {s.titleThai}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleApplyMultilineToBatch}
+                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold transition-all shadow-xl shadow-red-950 cursor-pointer flex items-center justify-center gap-2"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>🚀 จัดใส่เพลงที่ 1 ถึง {songs.length} และบันทึกทันที</span>
+                  </button>
+                </div>
+              )}
+
+              {/* TAB 3: SINGLE SONG DETAILED SEQUENCER */}
+              {mvModalTab === 'single' && (
+                <div className="space-y-4">
+                  {/* Song Selector */}
+                  <div className="space-y-2">
+                    <label className="block text-xs font-bold text-neutral-300">
+                      เลือกเพลงที่ต้องการใส่ / แก้ไขลิงก์ MV:
+                    </label>
+                    <select
+                      value={mvEditSongId}
+                      onChange={(e) => handleSelectMvEditSong(e.target.value)}
+                      className="w-full bg-neutral-950 border border-neutral-700 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 font-sans cursor-pointer"
+                    >
+                      {songs.map((song) => (
+                        <option key={song.id} value={song.id}>
+                          แทร็ก {song.trackNumber}: {song.titleThai} ({song.titleEng})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* URL Input Fields */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-neutral-300">
+                        ลิงก์ YouTube (URL):
+                      </label>
+                      <span className="text-[11px] text-neutral-400 font-mono">
+                        {mvUrlsInput.filter((u) => u.trim()).length}/10 ลิงก์
+                      </span>
+                    </div>
+
+                    <div className="space-y-2.5">
+                      {mvUrlsInput.map((url, idx) => {
+                        const videoId = getYouTubeVideoId(url);
+                        const thumb = videoId ? `https://img.youtube.com/vi/${videoId}/default.jpg` : null;
+
+                        return (
+                          <div key={idx} className="space-y-1.5 bg-neutral-950/60 p-2.5 rounded-xl border border-neutral-800">
+                            <div className="flex items-center gap-2">
+                              <span className="w-6 text-center text-xs font-mono font-bold text-neutral-400">
+                                #{idx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                value={url}
+                                onChange={(e) => handleUpdateMvUrlField(idx, e.target.value)}
+                                placeholder="เช่น https://www.youtube.com/watch?v=... หรือ https://youtu.be/..."
+                                className="flex-1 bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-red-500 font-mono"
+                              />
+                              {mvUrlsInput.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveMvUrlField(idx)}
+                                  className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-neutral-800 rounded-lg transition-colors cursor-pointer"
+                                  title="ลบช่องนี้"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Video validation & thumbnail preview */}
+                            {videoId ? (
+                              <div className="flex items-center gap-2 text-[11px] text-emerald-400 pl-8">
+                                {thumb && (
+                                  <img
+                                    src={thumb}
+                                    alt="preview"
+                                    className="w-10 h-7 object-cover rounded border border-neutral-700"
+                                    referrerPolicy="no-referrer"
+                                  />
+                                )}
+                                <span className="font-mono">✓ ตรวจพบ Video ID: <code className="text-white font-bold">{videoId}</code></span>
+                              </div>
+                            ) : url.trim().length > 0 ? (
+                              <p className="text-[11px] text-amber-400 pl-8 font-mono">
+                                ⚠️ ไม่พบ Video ID ในรูปแบบ URL นี้ (กรุณาใช้ลิงก์ YouTube ปกติ เช่น https://youtu.be/...)
+                              </p>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {mvUrlsInput.length < 10 && (
+                      <button
+                        type="button"
+                        onClick={handleAddMvUrlField}
+                        className="text-xs bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors cursor-pointer border border-neutral-700"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>เพิ่มลิงก์วิดีโอลำดับถัดไป (เล่นต่อกัน)</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+            </div>
+
+            {/* Quick guide format info */}
+            <div className="bg-neutral-950 rounded-2xl p-3 text-[11px] text-neutral-400 border border-neutral-800 font-mono shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="font-bold text-neutral-300">💡 รูปแบบ:</span>
+                <span><code>https://www.youtube.com/watch?v=...</code> หรือ <code>https://youtu.be/...</code></span>
+              </div>
+              <div className="text-[10px] text-amber-300">
+                💾 ข้อมูลจะถูกบันทึกในเบราว์เซอร์อัตโนมัติ
+              </div>
+            </div>
+
+            {/* Action Buttons Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-neutral-800 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsMvModalOpen(false)}
+                className="px-4 py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                ปิดหน้าต่าง
+              </button>
+
+              {mvModalTab === 'batch' ? (
+                <button
+                  type="button"
+                  onClick={handleSaveBatchMvUrls}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-red-950 cursor-pointer flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>บันทึกทุกลิงก์พร้อมกัน (Save All)</span>
+                </button>
+              ) : mvModalTab === 'single' ? (
+                <button
+                  type="button"
+                  onClick={handleSaveMvUrls}
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold transition-all shadow-lg shadow-red-950 cursor-pointer flex items-center gap-2"
+                >
+                  <Check className="w-4 h-4" />
+                  <span>บันทึกเพลงนี้</span>
+                </button>
+              ) : null}
+            </div>
+
           </div>
         </div>
       )}
