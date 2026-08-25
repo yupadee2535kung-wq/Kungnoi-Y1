@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { Song } from '../types';
 import { SONGS as DEFAULT_SONGS, BAND_INFO } from '../data/bandData';
-import { audioSynth } from '../utils/audioSynth';
+import { audioSynth, GITHUB_AUDIO_BASE_KEY, generateGitHubAudioUrls, normalizeAudioUrl } from '../utils/audioSynth';
 
 const SONGS_STORAGE_KEY = 'triplets_custom_songs_v10';
 const ADMIN_STORAGE_KEY = 'triplets_admin_logged_in_v1';
@@ -36,6 +36,11 @@ interface SongContextType {
   editSong: (songId: string, updatedData: Partial<Song>) => void;
   deleteSong: (songId: string) => boolean;
   resetSongs: () => void;
+
+  // GitHub Audio Sync
+  githubAudioRepo: string;
+  setGithubAudioRepo: (repo: string) => void;
+  applyGithubAudioToAllSongs: (repo: string) => void;
 
   // Booking contact management
   bookingContact: BookingContactInfo;
@@ -76,6 +81,8 @@ interface SongContextType {
   seek: (seconds: number) => void;
   setVolume: (vol: number) => void;
   uploadSongAudio: (songId: string, file: Blob) => Promise<boolean>;
+  playTestSound: () => void;
+  resumeAudio: () => void;
 }
 
 const SongContext = createContext<SongContextType | undefined>(undefined);
@@ -201,6 +208,58 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(SHUFFLE_STORAGE_KEY, String(isShuffle));
     } catch {}
   }, [isShuffle]);
+
+  const [githubAudioRepo, setGithubAudioRepoState] = useState<string>(() => {
+    try {
+      return localStorage.getItem(GITHUB_AUDIO_BASE_KEY) || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const setGithubAudioRepo = (repo: string) => {
+    setGithubAudioRepoState(repo);
+    try {
+      if (repo.trim()) {
+        localStorage.setItem(GITHUB_AUDIO_BASE_KEY, repo.trim());
+      } else {
+        localStorage.removeItem(GITHUB_AUDIO_BASE_KEY);
+      }
+    } catch {}
+  };
+
+  const applyGithubAudioToAllSongs = (repoInput: string) => {
+    const trimmed = repoInput.trim();
+    if (!trimmed) return;
+
+    setGithubAudioRepo(trimmed);
+
+    setSongs(prev => {
+      return prev.map((song, idx) => {
+        const trackNum = song.trackNumber || (idx + 1);
+        const { rawUrl } = generateGitHubAudioUrls(trimmed, trackNum);
+        return {
+          ...song,
+          audioUrl: rawUrl,
+        };
+      });
+    });
+
+    // If currently playing, restart active song with new GitHub URL
+    const active = songsRef.current.find(s => s.id === currentTrackIdRef.current);
+    if (active && isPlaying) {
+      const { rawUrl } = generateGitHubAudioUrls(trimmed, active.trackNumber || 1);
+      audioSynth.playTrack(
+        active.id,
+        active.durationSeconds,
+        active.audioParams?.rootNote || 58,
+        active.audioParams?.bpm || 108,
+        active.audioParams?.style || 'rnb_pop',
+        rawUrl,
+        active.trackNumber
+      );
+    }
+  };
 
   // Add real audio upload helper
   const uploadSongAudio = async (songId: string, file: Blob): Promise<boolean> => {
@@ -408,6 +467,14 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
     audioSynth.setVolume(vol);
   };
 
+  const playTestSound = () => {
+    audioSynth.playTestChime();
+  };
+
+  const resumeAudio = () => {
+    audioSynth.initContextSync();
+  };
+
   const updateBookingContact = (updated: Partial<BookingContactInfo>) => {
     setBookingContact(prev => ({ ...prev, ...updated }));
   };
@@ -506,6 +573,9 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
         editSong,
         deleteSong,
         resetSongs,
+        githubAudioRepo,
+        setGithubAudioRepo,
+        applyGithubAudioToAllSongs,
         bookingContact,
         updateBookingContact,
         resetBookingContact,
@@ -539,6 +609,8 @@ export const SongProvider: React.FC<{ children: React.ReactNode }> = ({ children
         seek,
         setVolume,
         uploadSongAudio,
+        playTestSound,
+        resumeAudio,
       }}
     >
       {children}

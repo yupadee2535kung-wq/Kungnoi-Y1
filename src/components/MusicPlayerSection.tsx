@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered, Upload } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Disc, Music, FileText, Share2, Heart, Sparkles, ExternalLink, Repeat, Repeat1, Shuffle, ChevronLeft, ChevronRight, CheckCircle2, Youtube, Video, BookOpen, Images, ListOrdered, Upload, Link, Radio, RefreshCw, Globe, Check } from 'lucide-react';
 import { ALBUM_INFO } from '../data/bandData';
 import { Song } from '../types';
 import { useSongs } from '../context/SongContext';
 import { useBandImages } from '../context/ImageContext';
 import { getYouTubeWatchUrl, getYouTubeSequentialEmbedUrl } from '../utils/youtubeUtils';
+import { generateGitHubAudioUrls } from '../utils/audioSynth';
 
 interface MusicPlayerSectionProps {
   currentTrackId?: string;
@@ -25,6 +26,7 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     isShuffle,
     frequencies,
     togglePlayPause,
+    playTrack,
     playNext,
     playPrev,
     toggleRepeatMode,
@@ -32,11 +34,21 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
     seek,
     setVolume,
     uploadSongAudio,
+    playTestSound,
+    resumeAudio,
+    githubAudioRepo,
+    setGithubAudioRepo,
+    applyGithubAudioToAllSongs,
+    editSong,
   } = useSongs();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTargetSongId, setUploadTargetSongId] = useState<string | null>(null);
   const [uploadSuccessMsg, setUploadSuccessMsg] = useState<string | null>(null);
+  const [testSoundMsg, setTestSoundMsg] = useState<boolean>(false);
+  const [isGithubModalOpen, setIsGithubModalOpen] = useState(false);
+  const [customRepoInput, setCustomRepoInput] = useState(githubAudioRepo || 'yupadee2535/triplets-band-website');
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
 
   const handleAudioFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -542,13 +554,42 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 }`}></div>
               </div>
 
-              {/* Master Audio Format Badge & Quick Upload Button */}
+              {/* Master Audio Format Badge & Quick Upload / GitHub Button */}
               <div className="pt-1 flex flex-wrap items-center justify-between gap-2 border-t border-neutral-800/60 text-[11px] font-mono text-neutral-400">
                 <div className="flex items-center flex-wrap gap-2">
-                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-950/70 border border-emerald-800 px-2 py-0.5 rounded flex items-center gap-1">
-                    <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                    <span>{isUsingRealAudio ? 'ไฟล์เสียง MP3 ในเครื่อง' : 'ระบบเสียงสังเคราะห์สตูดิโอ (Synth)'}</span>
+                  <span className={`text-[10px] font-mono px-2 py-0.5 rounded flex items-center gap-1 border ${
+                    isUsingRealAudio
+                      ? 'text-emerald-300 bg-emerald-950/80 border-emerald-700'
+                      : 'text-amber-300 bg-amber-950/70 border-amber-800'
+                  }`}>
+                    <CheckCircle2 className={`w-3 h-3 ${isUsingRealAudio ? 'text-emerald-400' : 'text-amber-400'}`} />
+                    <span>{isUsingRealAudio ? '🔊 เล่นจากไฟล์ MP3 / GitHub' : '🎹 ระบบเสียงสังเคราะห์สตูดิโอ (Synth)'}</span>
                   </span>
+                  <span className="text-neutral-500 hidden sm:inline">•</span>
+                  <button
+                    type="button"
+                    onClick={() => setIsGithubModalOpen(true)}
+                    className="text-[10px] bg-neutral-900 hover:bg-neutral-800 text-rose-300 hover:text-white border border-neutral-700 hover:border-rose-500 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors"
+                    title="เชื่อมต่อและดึงไฟล์เสียง MP3 จาก GitHub"
+                  >
+                    <Radio className="w-3 h-3 text-rose-400" />
+                    <span>ดึงเพลงจาก GitHub 🐙</span>
+                  </button>
+                  <span className="text-neutral-500 hidden sm:inline">•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resumeAudio();
+                      playTestSound();
+                      setTestSoundMsg(true);
+                      setTimeout(() => setTestSoundMsg(false), 3500);
+                    }}
+                    className="text-[10px] bg-neutral-900 hover:bg-neutral-800 text-cyan-300 hover:text-white border border-neutral-700 hover:border-cyan-500 px-2 py-0.5 rounded flex items-center gap-1 cursor-pointer transition-colors"
+                    title="คลิกเพื่อทดสอบเสียงลำโพง (กระดิ่ง Major Bell)"
+                  >
+                    <Volume2 className="w-3 h-3 text-cyan-400" />
+                    <span>ทดสอบเสียงลำโพง 🔔</span>
+                  </button>
                   <span className="text-neutral-500 hidden sm:inline">•</span>
                   <button
                     type="button"
@@ -557,13 +598,23 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                     title="อัปโหลดไฟล์เพลง MP3 สำหรับเพลงนี้"
                   >
                     <Upload className="w-3 h-3 text-amber-400" />
-                    <span>อัปโหลด MP3 เพลงนี้</span>
+                    <span>อัปโหลด MP3</span>
                   </button>
                 </div>
                 <span className="text-[10px] text-red-400 font-bold bg-red-950/40 border border-red-900/50 px-2 py-0.5 rounded">
                   TRIPLETS RECORD
                 </span>
               </div>
+
+              {/* Sound Test / Unmute Alert */}
+              {testSoundMsg && (
+                <div className="bg-cyan-950/90 border border-cyan-600 text-cyan-200 text-xs px-3 py-2 rounded-xl flex items-center justify-between gap-2 animate-fadeIn">
+                  <div className="flex items-center gap-2">
+                    <Volume2 className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span>🔔 ส่งสัญญาณเสียงทดสอบแล้ว! หากไม่ได้ยิน ให้ตรวจสอบปุ่มเปิดเสียง/ระดับเสียงบนเครื่องของคุณ</span>
+                  </div>
+                </div>
+              )}
 
               {/* Upload Success Alert */}
               {uploadSuccessMsg && (
@@ -932,6 +983,135 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
         </div>
 
       </div>
+
+      {/* GitHub Audio Sync Modal */}
+      {isGithubModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-neutral-900 border border-neutral-700 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-5 text-neutral-200">
+            <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700 flex items-center justify-center text-rose-400">
+                  <Radio className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                    ดึงเพลง MP3 จาก GitHub
+                    <span className="text-xs bg-rose-950/80 text-rose-300 border border-rose-800/80 px-2 py-0.5 rounded-full font-mono">
+                      Real MP3 Sync
+                    </span>
+                  </h3>
+                  <p className="text-xs text-neutral-400">
+                    เล่นไฟล์เสียงจริงจากโฟลเดอร์ <code className="text-amber-300 font-mono">public/audio/*.mp3</code> บน GitHub
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsGithubModalOpen(false)}
+                className="text-neutral-400 hover:text-white p-1.5 rounded-lg hover:bg-neutral-800 transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            {syncStatusMsg && (
+              <div className="bg-emerald-950/90 border border-emerald-600 text-emerald-200 text-xs px-3.5 py-2.5 rounded-xl flex items-center gap-2 animate-fadeIn">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                <span>{syncStatusMsg}</span>
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <label className="block text-xs font-bold text-neutral-300">
+                GitHub Repository หรือ URL (สาขา main / master)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={customRepoInput}
+                  onChange={(e) => setCustomRepoInput(e.target.value)}
+                  placeholder="เช่น yupadee2535/triplets-band-website หรือ full GitHub URL"
+                  className="flex-1 bg-neutral-950 border border-neutral-700 rounded-xl px-3.5 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-rose-500 font-mono"
+                />
+              </div>
+              <p className="text-[11px] text-neutral-400">
+                💡 รูปแบบไฟล์ที่รองรับ: <span className="text-neutral-300 font-mono">01.mp3, 02.mp3, ..., 10.mp3</span> ในโฟลเดอร์ <span className="text-amber-400 font-mono">public/audio/</span>
+              </p>
+            </div>
+
+            {/* Quick Action Button */}
+            <div className="flex flex-col sm:flex-row gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  applyGithubAudioToAllSongs(customRepoInput);
+                  setSyncStatusMsg('✅ เชื่อมต่อและดึงไฟล์เสียง MP3 ทั้ง 10 เพลงจาก GitHub สำเร็จแล้ว!');
+                  setTimeout(() => setSyncStatusMsg(null), 4000);
+                }}
+                className="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-bold py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-2 shadow-lg shadow-rose-950 transition-all cursor-pointer"
+              >
+                <RefreshCw className="w-4 h-4" />
+                <span>ซิงค์ดึงเพลงทั้ง 10 เพลงจาก GitHub ทันที</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  // Test play active track
+                  const active = songs.find(s => s.id === currentTrackId) || songs[0];
+                  if (active) {
+                    const { rawUrl } = generateGitHubAudioUrls(customRepoInput, active.trackNumber || 1);
+                    editSong(active.id, { audioUrl: rawUrl });
+                    playTrack(active.id);
+                    setSyncStatusMsg(`🎵 กำลังทดสอบสตรีมเพลง "${active.titleThai}" จาก GitHub...`);
+                    setTimeout(() => setSyncStatusMsg(null), 3500);
+                  }
+                }}
+                className="bg-neutral-800 hover:bg-neutral-700 text-cyan-300 border border-neutral-600 hover:border-cyan-500 font-bold py-2.5 px-4 rounded-xl text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <Play className="w-4 h-4 text-cyan-400" />
+                <span>ทดสอบเล่นเพลงนี้</span>
+              </button>
+            </div>
+
+            {/* Preview of Track URLs */}
+            <div className="pt-2">
+              <h4 className="text-xs font-bold text-neutral-400 mb-2">ตัวอย่างลิงก์ไฟล์เสียงที่จะดึงจาก GitHub:</h4>
+              <div className="bg-neutral-950 rounded-xl p-3 max-h-36 overflow-y-auto space-y-1.5 text-xs font-mono border border-neutral-800">
+                {songs.map((song, i) => {
+                  const { rawUrl } = generateGitHubAudioUrls(customRepoInput, song.trackNumber || (i + 1));
+                  return (
+                    <div key={song.id} className="flex items-center justify-between text-neutral-400 hover:text-white py-0.5">
+                      <span className="truncate max-w-[200px] sm:max-w-[240px]">
+                        {song.trackNumber || (i + 1)}. {song.titleThai}
+                      </span>
+                      <a
+                        href={rawUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-rose-400 hover:text-rose-300 flex items-center gap-1 text-[11px]"
+                      >
+                        <span>เปิดไฟล์ MP3</span>
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-3 border-t border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setIsGithubModalOpen(false)}
+                className="px-5 py-2 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-bold transition-colors cursor-pointer"
+              >
+                เสร็จสิ้น / ปิดหน้าต่าง
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </section>
   );

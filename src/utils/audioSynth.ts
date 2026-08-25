@@ -1,10 +1,67 @@
 /**
  * Web Audio API Engine & Media Player for Kungnoi Y. Album
  * Supports real MP3/WAV/OGG/M4A audio playback with real-time AnalyserNode Audio Spectrum,
- * responsive mobile audio unlocking (iOS/Android), and rich Dreamy Soul Pop / R&B audio synthesis.
+ * responsive user-gesture unlocking (iOS/Android/Desktop), and rich Dreamy Soul Pop / R&B audio synthesis.
  */
 
 import { getAudioBlobUrl } from './audioStorage';
+
+// Storage key for configured GitHub audio repository / base URL
+export const GITHUB_AUDIO_BASE_KEY = 'kungnoi_github_audio_base';
+
+// Helper: Normalize GitHub web links or relative paths to direct raw audio streamable URLs
+export function normalizeAudioUrl(rawUrl: string, trackNumber?: number): string {
+  if (!rawUrl) {
+    const pad = String(trackNumber || 1).padStart(2, '0');
+    return `/audio/${pad}.mp3`;
+  }
+
+  const trimmed = rawUrl.trim();
+
+  // If already IndexedDB key or blob object URL
+  if (trimmed.startsWith('idb://') || trimmed.startsWith('blob:')) {
+    return trimmed;
+  }
+
+  // If GitHub Web UI link: https://github.com/user/repo/blob/branch/path/to/file.mp3
+  // Convert to raw.githubusercontent.com/user/repo/branch/path/to/file.mp3
+  const githubBlobMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/i);
+  if (githubBlobMatch) {
+    const [, user, repo, branch, path] = githubBlobMatch;
+    return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
+  }
+
+  // If GitHub Raw with /raw/ : https://github.com/user/repo/raw/branch/path
+  const githubRawMatch = trimmed.match(/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/raw\/([^/]+)\/(.+)$/i);
+  if (githubRawMatch) {
+    const [, user, repo, branch, path] = githubRawMatch;
+    return `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`;
+  }
+
+  return trimmed;
+}
+
+// Generate raw GitHub & jsDelivr CDN URLs from a GitHub repository path
+export function generateGitHubAudioUrls(repoInput: string, trackNumber: number): { rawUrl: string; cdnUrl: string; filename: string } {
+  const pad = String(trackNumber).padStart(2, '0');
+  const filename = `${pad}.mp3`;
+  
+  // Clean up input: remove https://github.com/ or trailing slashes
+  let cleanRepo = repoInput.trim().replace(/^https?:\/\/github\.com\//i, '').replace(/\/+$/, '');
+  let branch = 'main';
+  
+  // If branch specified e.g. user/repo/tree/master
+  if (cleanRepo.includes('/tree/')) {
+    const parts = cleanRepo.split('/tree/');
+    cleanRepo = parts[0];
+    branch = parts[1] || 'main';
+  }
+
+  const rawUrl = `https://raw.githubusercontent.com/${cleanRepo}/${branch}/public/audio/${filename}`;
+  const cdnUrl = `https://cdn.jsdelivr.net/gh/${cleanRepo}@${branch}/public/audio/${filename}`;
+
+  return { rawUrl, cdnUrl, filename };
+}
 
 // Conversion: MIDI Note number to Frequency in Hz
 function midiToFreq(note: number): number {
@@ -12,12 +69,12 @@ function midiToFreq(note: number): number {
 }
 
 class AudioSynthEngine {
-  private ctx: AudioContext | null = null;
+  public ctx: AudioContext | null = null;
   private isPlaying = false;
   private currentTrackId: string | null = null;
   private currentTime = 0;
-  private duration = 240; // default
-  private volume = 0.8;
+  private duration = 240; // default in seconds
+  private volume = 0.85;
   private intervalId: number | null = null;
   private masterGain: GainNode | null = null;
   public analyser: AnalyserNode | null = null;
@@ -34,39 +91,38 @@ class AudioSynthEngine {
   private onEndedCallback: (() => void) | null = null;
 
   constructor() {
-    this.setupMobileUnlock();
+    this.setupGlobalUnlock();
   }
 
-  // Setup mobile user-gesture unlock for iOS Safari and Android Chrome
-  private setupMobileUnlock() {
+  // Global user-gesture unlock for iOS Safari, Chrome, Edge and Firefox
+  private setupGlobalUnlock() {
     if (typeof window === 'undefined') return;
 
     const unlock = () => {
-      this.ensureContext().then((ctx) => {
-        if (ctx && ctx.state === 'suspended') {
-          ctx.resume().catch(() => {});
-        }
-      });
-      window.removeEventListener('touchstart', unlock);
-      window.removeEventListener('touchend', unlock);
-      window.removeEventListener('click', unlock);
-      window.removeEventListener('keydown', unlock);
+      this.initContextSync();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume().catch(() => {});
+      }
     };
 
+    window.addEventListener('click', unlock, { passive: true });
     window.addEventListener('touchstart', unlock, { passive: true });
     window.addEventListener('touchend', unlock, { passive: true });
-    window.addEventListener('click', unlock, { passive: true });
     window.addEventListener('keydown', unlock, { passive: true });
   }
 
-  public async ensureContext(): Promise<AudioContext | null> {
+  /**
+   * Synchronous AudioContext Initialization & Resumption
+   * Critical for passing browser autoplay policy within user gesture stack.
+   */
+  public initContextSync(): AudioContext | null {
     if (typeof window === 'undefined') return null;
 
     try {
       if (!this.ctx) {
         const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
         this.ctx = new AudioCtx();
-        
+
         this.masterGain = this.ctx.createGain();
         this.analyser = this.ctx.createAnalyser();
         this.analyser.fftSize = 128;
@@ -78,16 +134,16 @@ class AudioSynthEngine {
       }
 
       if (this.ctx.state === 'suspended') {
-        await this.ctx.resume();
+        this.ctx.resume().catch(() => {});
       }
 
-      if (this.masterGain) {
+      if (this.masterGain && this.ctx) {
         this.masterGain.gain.setValueAtTime(this.volume, this.ctx.currentTime);
       }
 
       return this.ctx;
     } catch (err) {
-      console.warn('AudioContext initialization warning:', err);
+      console.warn('AudioContext initialization notice:', err);
       return null;
     }
   }
@@ -114,6 +170,39 @@ class AudioSynthEngine {
     this.listeners.forEach((cb) => cb());
   }
 
+  /**
+   * Play a Sound Test Chime (Instant User Audio Verification)
+   */
+  public playTestChime() {
+    const ctx = this.initContextSync();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+    const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 (Major Bell Arpeggio)
+
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + i * 0.1);
+
+      gain.gain.setValueAtTime(0.0001, now + i * 0.1);
+      gain.gain.linearRampToValueAtTime(0.25, now + i * 0.1 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + i * 0.1 + 0.6);
+
+      osc.connect(gain);
+      if (this.masterGain) {
+        gain.connect(this.masterGain);
+      } else {
+        gain.connect(ctx.destination);
+      }
+
+      osc.start(now + i * 0.1);
+      osc.stop(now + i * 0.1 + 0.65);
+    });
+  }
+
   public async playTrack(
     trackId: string,
     durationSeconds: number,
@@ -123,7 +212,8 @@ class AudioSynthEngine {
     audioUrl?: string,
     trackNumber?: number
   ) {
-    await this.ensureContext();
+    // 1. Synchronously initialize/resume AudioContext
+    this.initContextSync();
 
     const isSameTrack = this.currentTrackId === trackId;
 
@@ -135,15 +225,15 @@ class AudioSynthEngine {
 
     this.isPlaying = true;
 
-    // 1. Check if real audio is available and valid
-    let playedSuccessfully = false;
+    // 2. Determine if real audio file (GitHub URL, MP3 path, IndexedDB or valid Blob) is used
+    let isRealAudioPlayed = false;
 
     if (audioUrl && audioUrl.trim() !== '') {
-      playedSuccessfully = await this.playRealAudio(audioUrl.trim(), isSameTrack);
+      isRealAudioPlayed = await this.playRealAudio(audioUrl.trim(), isSameTrack, trackNumber);
     }
 
-    // 2. If no valid real audio file or playback couldn't start, use rich built-in studio synthesizer
-    if (!playedSuccessfully) {
+    // 3. If no uploaded or accessible MP3 file, instantly start rich procedural studio synthesizer
+    if (!isRealAudioPlayed) {
       this.stopRealAudio();
       this.isUsingRealAudio = false;
       this.startTimer();
@@ -173,6 +263,7 @@ class AudioSynthEngine {
     if (!this.audioElement && typeof window !== 'undefined') {
       this.audioElement = new Audio();
       this.audioElement.preload = 'auto';
+      this.audioElement.crossOrigin = 'anonymous';
       this.audioElement.setAttribute('playsinline', 'true');
       this.audioElement.setAttribute('webkit-playsinline', 'true');
 
@@ -193,8 +284,8 @@ class AudioSynthEngine {
       };
 
       this.audioElement.onerror = () => {
-        // Fallback to synth if real audio element fails during playback
-        if (this.isPlaying) {
+        if (this.isPlaying && this.isUsingRealAudio) {
+          console.warn('Real audio playback error encountered, falling back to studio synthesis...');
           this.isUsingRealAudio = false;
           this.startTimer();
           this.startAudioSynthesis(58, 108, 'rnb_pop', 1);
@@ -204,49 +295,87 @@ class AudioSynthEngine {
     }
   }
 
-  private async playRealAudio(audioUrl: string, isSameTrack: boolean): Promise<boolean> {
+  private async playRealAudio(audioUrl: string, isSameTrack: boolean, trackNumber?: number): Promise<boolean> {
     this.stopAudioSynthesis();
     this.stopTimer();
     this.initAudioElement();
 
     if (!this.audioElement) return false;
 
-    let srcToPlay = audioUrl;
+    // Build candidate URLs
+    const candidates: string[] = [];
 
     if (audioUrl.startsWith('idb://')) {
       const idbKey = audioUrl.replace('idb://', '');
       const blobUrl = await getAudioBlobUrl(idbKey);
       if (blobUrl) {
-        srcToPlay = blobUrl;
-      } else {
-        return false;
+        candidates.push(blobUrl);
       }
     } else if (audioUrl.startsWith('blob:')) {
-      srcToPlay = audioUrl;
-    } else if (audioUrl.startsWith('/') || audioUrl.startsWith('http://') || audioUrl.startsWith('https://')) {
+      candidates.push(audioUrl);
+    } else {
+      // 1. Direct normalized URL
+      const normalized = normalizeAudioUrl(audioUrl, trackNumber);
+      candidates.push(normalized);
+
+      // 2. If configured GitHub repo in localStorage
+      let customGithubBase = '';
       try {
-        const resp = await fetch(audioUrl, { method: 'HEAD' });
-        const contentType = resp.headers.get('content-type') || '';
-        // If the server returns HTML (SPA fallback) or error, it's not a real audio file
-        if (!resp.ok || contentType.includes('text/html') || (!contentType.includes('audio/') && !contentType.includes('octet-stream') && !contentType.includes('video/'))) {
-          return false;
+        customGithubBase = localStorage.getItem(GITHUB_AUDIO_BASE_KEY) || '';
+      } catch {}
+
+      if (customGithubBase) {
+        const gh = generateGitHubAudioUrls(customGithubBase, trackNumber || 1);
+        candidates.push(gh.rawUrl);
+        candidates.push(gh.cdnUrl);
+      }
+
+      // 3. If raw.githubusercontent.com URL, generate fast jsDelivr CDN equivalent
+      if (normalized.includes('raw.githubusercontent.com')) {
+        const cdnMatch = normalized.match(/^https?:\/\/raw\.githubusercontent\.com\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/i);
+        if (cdnMatch) {
+          const [, user, repo, branch, path] = cdnMatch;
+          candidates.push(`https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${path}`);
         }
-      } catch {
-        return false;
+      }
+
+      // 4. If relative path like /audio/01.mp3, also try without leading slash
+      if (normalized.startsWith('/')) {
+        const withoutSlash = normalized.replace(/^\/+/, '');
+        candidates.push(withoutSlash);
+        if (typeof window !== 'undefined') {
+          candidates.push(`${window.location.origin}/${withoutSlash}`);
+        }
       }
     }
 
-    if (this.activeAudioUrl !== audioUrl || !isSameTrack || this.audioElement.src !== srcToPlay) {
+    if (candidates.length === 0) return false;
+
+    for (const srcToPlay of candidates) {
+      const success = await this.tryPlayAudioCandidate(srcToPlay, audioUrl, isSameTrack);
+      if (success) {
+        return true;
+      }
+    }
+
+    this.isUsingRealAudio = false;
+    return false;
+  }
+
+  private async tryPlayAudioCandidate(srcToPlay: string, originalAudioUrl: string, isSameTrack: boolean): Promise<boolean> {
+    if (!this.audioElement) return false;
+
+    if (this.activeAudioUrl !== originalAudioUrl || !isSameTrack || this.audioElement.src !== srcToPlay) {
       if (this.objectUrlToRevoke && this.objectUrlToRevoke !== srcToPlay) {
         URL.revokeObjectURL(this.objectUrlToRevoke);
         this.objectUrlToRevoke = null;
       }
 
-      if (srcToPlay.startsWith('blob:') && !audioUrl.startsWith('blob:')) {
+      if (srcToPlay.startsWith('blob:') && !originalAudioUrl.startsWith('blob:')) {
         this.objectUrlToRevoke = srcToPlay;
       }
 
-      this.activeAudioUrl = audioUrl;
+      this.activeAudioUrl = originalAudioUrl;
       this.audioElement.src = srcToPlay;
       this.audioElement.currentTime = isSameTrack ? this.currentTime : 0;
     }
@@ -258,7 +387,6 @@ class AudioSynthEngine {
       this.isUsingRealAudio = true;
       return true;
     } catch {
-      this.isUsingRealAudio = false;
       return false;
     }
   }
@@ -304,6 +432,7 @@ class AudioSynthEngine {
       duration: this.duration,
       volume: this.volume,
       isUsingRealAudio: this.isUsingRealAudio,
+      isContextSuspended: this.ctx ? this.ctx.state === 'suspended' : false,
     };
   }
 
@@ -331,21 +460,20 @@ class AudioSynthEngine {
 
   /**
    * Rich Multi-Layer Procedural Synthesizer
-   * Creates lush chord progressions, acoustic strumming, soulful lead melodies,
-   * warm basslines, and rhythmic beat per track.
+   * Creates warm electric piano chords, acoustic basslines, snappy drums, and soulful melodies.
    */
   private startAudioSynthesis(rootNote: number, bpm: number, style: string, trackNum = 1) {
     this.stopAudioSynthesis();
-    if (!this.ctx || !this.masterGain) return;
+    const ctx = this.initContextSync();
+    if (!ctx || !this.masterGain) return;
 
-    // Beat timing
-    const beatIntervalMs = Math.max(250, (60 / bpm) * 1000);
+    // Beat and chord timing
+    const beatIntervalMs = Math.max(260, (60 / bpm) * 1000);
     const chordIntervalMs = beatIntervalMs * 4; // 4 beats per bar
     let barIndex = 0;
     let beatIndex = 0;
 
     // Harmonic Chord Progressions by Track & Style
-    // Chords are arrays of semitone offsets from rootNote
     const progressions: Record<string, number[][]> = {
       soul_pop: [
         [0, 4, 7, 11, 14],   // Maj9 (Fmaj9)
@@ -410,8 +538,6 @@ class AudioSynthEngine {
     };
 
     const chordsList = progressions[style] || progressions.soul_pop;
-
-    // Melody scale intervals
     const melodyScale = [0, 2, 4, 7, 9, 11, 12, 14, 16];
 
     // Trigger full bar chords & atmospheric pad
@@ -434,15 +560,15 @@ class AudioSynthEngine {
         osc.frequency.setValueAtTime(freq, now);
 
         filter.type = 'lowpass';
-        filter.frequency.setValueAtTime(1400 + idx * 250, now);
+        filter.frequency.setValueAtTime(1500 + idx * 250, now);
         filter.Q.setValueAtTime(1.2, now);
 
-        // Strum arpeggiation delay (15ms between strings)
-        const noteStart = now + idx * 0.018;
-        const noteDuration = (chordIntervalMs / 1000) * 0.95;
+        const noteStart = now + idx * 0.02;
+        const noteDuration = (chordIntervalMs / 1000) * 0.92;
 
+        noteGain.gain.setValueAtTime(0.0001, now);
         noteGain.gain.setValueAtTime(0.0001, noteStart);
-        noteGain.gain.linearRampToValueAtTime(0.2 / (idx + 1), noteStart + 0.05);
+        noteGain.gain.linearRampToValueAtTime(0.24 / (idx + 1), noteStart + 0.04);
         noteGain.gain.exponentialRampToValueAtTime(0.0001, noteStart + noteDuration);
 
         osc.connect(filter);
@@ -464,7 +590,7 @@ class AudioSynthEngine {
       bassOsc.frequency.setValueAtTime(bassFreq, now);
 
       bassGain.gain.setValueAtTime(0.0001, now);
-      bassGain.gain.linearRampToValueAtTime(0.3, now + 0.04);
+      bassGain.gain.linearRampToValueAtTime(0.35, now + 0.04);
       bassGain.gain.exponentialRampToValueAtTime(0.0001, now + (chordIntervalMs / 1000) * 0.9);
 
       bassOsc.connect(bassGain);
@@ -476,12 +602,12 @@ class AudioSynthEngine {
       this.activeVoices.push({ osc: bassOsc, gain: bassGain });
 
       // Clean up finished voice references periodically
-      if (this.activeVoices.length > 50) {
-        this.activeVoices = this.activeVoices.slice(-20);
+      if (this.activeVoices.length > 40) {
+        this.activeVoices = this.activeVoices.slice(-15);
       }
     };
 
-    // Trigger individual rhythmic beats and vocal/lead melody notes
+    // Trigger rhythmic beats and soulful vocal/lead melody notes
     const playBeat = () => {
       if (!this.ctx || !this.masterGain || !this.isPlaying || this.isUsingRealAudio) return;
 
@@ -494,10 +620,10 @@ class AudioSynthEngine {
         const kickOsc = this.ctx.createOscillator();
         const kickGain = this.ctx.createGain();
         kickOsc.type = 'sine';
-        kickOsc.frequency.setValueAtTime(120, now);
-        kickOsc.frequency.exponentialRampToValueAtTime(38, now + 0.08);
+        kickOsc.frequency.setValueAtTime(130, now);
+        kickOsc.frequency.exponentialRampToValueAtTime(38, now + 0.09);
 
-        kickGain.gain.setValueAtTime(0.3, now);
+        kickGain.gain.setValueAtTime(0.35, now);
         kickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
 
         kickOsc.connect(kickGain);
@@ -513,13 +639,13 @@ class AudioSynthEngine {
         const snapFilter = this.ctx.createBiquadFilter();
 
         snapOsc.type = 'triangle';
-        snapOsc.frequency.setValueAtTime(240, now);
+        snapOsc.frequency.setValueAtTime(250, now);
 
         snapFilter.type = 'bandpass';
         snapFilter.frequency.setValueAtTime(1800, now);
-        snapFilter.Q.setValueAtTime(3.0, now);
+        snapFilter.Q.setValueAtTime(2.5, now);
 
-        snapGain.gain.setValueAtTime(0.15, now);
+        snapGain.gain.setValueAtTime(0.18, now);
         snapGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.09);
 
         snapOsc.connect(snapFilter);
@@ -535,12 +661,12 @@ class AudioSynthEngine {
       const hatFilter = this.ctx.createBiquadFilter();
 
       hatOsc.type = 'square';
-      hatOsc.frequency.setValueAtTime(3800 + (beatInBar % 2) * 800, now);
+      hatOsc.frequency.setValueAtTime(4000 + (beatInBar % 2) * 800, now);
 
       hatFilter.type = 'highpass';
       hatFilter.frequency.setValueAtTime(4500, now);
 
-      hatGain.gain.setValueAtTime(0.035, now);
+      hatGain.gain.setValueAtTime(0.04, now);
       hatGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
 
       hatOsc.connect(hatFilter);
@@ -562,12 +688,12 @@ class AudioSynthEngine {
         leadOsc.frequency.setValueAtTime(melodyFreq, now);
 
         leadFilter.type = 'lowpass';
-        leadFilter.frequency.setValueAtTime(2200, now);
+        leadFilter.frequency.setValueAtTime(2400, now);
         leadFilter.Q.setValueAtTime(1.5, now);
 
         const leadDur = (beatIntervalMs / 1000) * 0.8;
         leadGain.gain.setValueAtTime(0.0001, now);
-        leadGain.gain.linearRampToValueAtTime(0.18, now + 0.03);
+        leadGain.gain.linearRampToValueAtTime(0.22, now + 0.03);
         leadGain.gain.exponentialRampToValueAtTime(0.0001, now + leadDur);
 
         leadOsc.connect(leadFilter);
@@ -579,7 +705,7 @@ class AudioSynthEngine {
       }
     };
 
-    // Initial triggers
+    // Trigger opening bars immediately so sound is heard instantaneously
     playChordBar();
     playBeat();
 
@@ -598,7 +724,6 @@ class AudioSynthEngine {
       this.beatTimer = null;
     }
 
-    // Stop and clear active oscillator voices
     for (const voice of this.activeVoices) {
       try {
         voice.gain.gain.setValueAtTime(0, this.ctx?.currentTime || 0);
@@ -613,11 +738,7 @@ class AudioSynthEngine {
 
   // Real-time Audio Spectrum Frequency Data
   public getFrequencyData(): number[] {
-    if (!this.isPlaying) {
-      return Array(16).fill(10);
-    }
-
-    if (this.analyser) {
+    if (this.analyser && this.isPlaying) {
       const bufferLength = this.analyser.frequencyBinCount;
       const dataArray = new Uint8Array(bufferLength);
       this.analyser.getByteFrequencyData(dataArray);
@@ -631,11 +752,15 @@ class AudioSynthEngine {
         const result: number[] = [];
         const step = Math.floor(bufferLength / 16) || 1;
         for (let i = 0; i < 16; i++) {
-          const val = dataArray[i * step] || 0;
-          result.push(Math.max(12, Math.min(100, Math.floor((val / 255) * 100))));
+          const val = Math.max(10, Math.min(100, Math.floor((dataArray[i * step] / 255) * 100)));
+          result.push(val);
         }
         return result;
       }
+    }
+
+    if (!this.isPlaying) {
+      return Array(16).fill(8);
     }
 
     // Dynamic rhythmic fallback visualizer for smooth real-time animation
@@ -653,4 +778,3 @@ class AudioSynthEngine {
 }
 
 export const audioSynth = new AudioSynthEngine();
-
