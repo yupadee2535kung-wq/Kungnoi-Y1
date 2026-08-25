@@ -486,11 +486,11 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                       />
                     </div>
 
-                    {/* Left & Right Floating Overlay Skip Buttons (Quick Skip on Video) */}
+                    {/* Left & Right Floating Overlay Skip Buttons (Quick Skip on Video - visible on desktop/hover) */}
                     <button
                       type="button"
                       onClick={handleMvSkipPrev}
-                      className="absolute left-2.5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl bg-neutral-950/80 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer z-20 opacity-70 group-hover:opacity-100 hover:scale-110 flex items-center justify-center"
+                      className="hidden sm:flex absolute left-2.5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl bg-neutral-950/80 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer z-20 opacity-70 group-hover:opacity-100 hover:scale-110 items-center justify-center"
                       title={`ข้ามไปเพลงก่อนหน้า: แทร็ก #${prevSong.trackNumber} ${prevSong.titleThai}`}
                     >
                       <ChevronLeft className="w-5 h-5" />
@@ -499,14 +499,14 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                     <button
                       type="button"
                       onClick={handleMvSkipNext}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl bg-neutral-950/80 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer z-20 opacity-70 group-hover:opacity-100 hover:scale-110 flex items-center justify-center"
+                      className="hidden sm:flex absolute right-2.5 top-1/2 -translate-y-1/2 p-2.5 rounded-2xl bg-neutral-950/80 hover:bg-red-600 border border-neutral-700/80 hover:border-red-500 text-white shadow-2xl backdrop-blur-md transition-all cursor-pointer z-20 opacity-70 group-hover:opacity-100 hover:scale-110 items-center justify-center"
                       title={`ข้ามไปเพลงถัดไป: แทร็ก #${nextSong.trackNumber} ${nextSong.titleThai}`}
                     >
                       <ChevronRight className="w-5 h-5" />
                     </button>
 
-                    {/* Top Floating Info & Skip Bar in MV Mode */}
-                    <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between pointer-events-none z-20 gap-1.5">
+                    {/* Top Floating Info & Skip Bar in MV Mode (Hidden on mobile to avoid blocking video content) */}
+                    <div className="hidden sm:flex absolute top-2.5 left-2.5 right-2.5 items-center justify-between pointer-events-none z-20 gap-1.5">
                       {/* Left: Track badge & Sequence */}
                       <div className="pointer-events-auto flex items-center gap-1.5 bg-neutral-950/90 border border-neutral-700/90 text-white text-[11px] font-mono font-bold px-2.5 py-1 rounded-xl shadow-xl backdrop-blur-md">
                         <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />
@@ -677,14 +677,14 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 <div className="absolute inset-x-0 bottom-0 h-44 bg-gradient-to-t from-neutral-950/95 via-neutral-950/50 to-transparent pointer-events-none"></div>
                 <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-neutral-950/70 to-transparent pointer-events-none"></div>
 
-                {/* Top Bar Controls Overlay */}
+                {/* Top Bar Controls Overlay (Hidden or ultra-compact on mobile to prevent blocking image) */}
                 <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-1.5 z-10">
-                  <span className="bg-neutral-950/80 backdrop-blur-md text-amber-300 font-mono text-[11px] font-bold px-2.5 py-1 rounded-xl border border-amber-500/30">
+                  <span className="hidden sm:inline-block bg-neutral-950/80 backdrop-blur-md text-amber-300 font-mono text-[11px] font-bold px-2.5 py-1 rounded-xl border border-amber-500/30">
                     {activeSlide.tag || `รูปที่ ${currentSlideIndex + 1}/${slideshowList.length}`}
                   </span>
 
                   {/* Right controls: MV button, Slideshow Toggle & Vinyl Disc Indicator */}
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 ml-auto">
                     {activeSongMvUrls.length > 0 && (
                       <button
                         type="button"
@@ -692,39 +692,39 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                           setVisualMode('mv');
                           if (isPlaying) togglePlayPause();
                         }}
-                        className="flex items-center gap-1 bg-red-600 hover:bg-red-500 text-white text-[11px] font-bold px-2.5 py-1.5 rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer animate-pulse"
+                        className="flex items-center gap-1 bg-red-600/90 hover:bg-red-500 text-white text-[10px] sm:text-[11px] font-bold px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl shadow-xl backdrop-blur-md transition-all cursor-pointer animate-pulse"
                         title="กดดู Official MV เพลงนี้"
                       >
-                        <Youtube className="w-3.5 h-3.5" />
-                        <span className="hidden sm:inline">ดู MV {activeSongMvUrls.length > 1 ? `(${activeSongMvUrls.length})` : ''}</span>
+                        <Youtube className="w-3 sm:w-3.5 h-3 sm:h-3.5" />
+                        <span>ดู MV {activeSongMvUrls.length > 1 ? `(${activeSongMvUrls.length})` : ''}</span>
                       </button>
                     )}
 
                     <button
                       type="button"
                       onClick={() => setIsSlideshowMode(!isSlideshowMode)}
-                      className={`flex items-center gap-1.5 text-[11px] font-mono font-bold px-2 py-1.5 rounded-xl shadow-lg backdrop-blur-md transition-all cursor-pointer border ${
+                      className={`flex items-center gap-1 text-[10px] sm:text-[11px] font-mono font-bold px-2 py-1 sm:py-1.5 rounded-xl shadow-lg backdrop-blur-md transition-all cursor-pointer border ${
                         isSlideshowMode
                           ? 'bg-red-950/90 border-red-600/80 text-red-300'
                           : 'bg-neutral-950/80 border-neutral-700 text-neutral-300 hover:text-white'
                       }`}
                       title="สลับโหมดสไลด์โชว์รูปภาพวงอัตโนมัติ"
                     >
-                      <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                      <Sparkles className="w-3 sm:w-3.5 h-3 sm:h-3.5 text-amber-400" />
                       <span className="hidden sm:inline">{isSlideshowMode ? 'สไลด์ ON' : 'สไลด์ OFF'}</span>
                     </button>
 
-                    <div className={`w-7 h-7 rounded-full border border-neutral-700/80 bg-neutral-950/90 flex items-center justify-center shadow-lg ${isPlaying ? 'animate-spin' : ''}`}>
-                      <div className="w-2.5 h-2.5 rounded-full bg-red-600 border border-neutral-900"></div>
+                    <div className="w-6 sm:w-7 h-6 sm:h-7 rounded-full border border-neutral-700/80 bg-neutral-950/90 flex items-center justify-center shadow-lg">
+                      <div className={`w-2 sm:w-2.5 h-2 sm:h-2.5 rounded-full bg-red-600 border border-neutral-900 ${isPlaying ? 'animate-ping' : ''}`}></div>
                     </div>
                   </div>
                 </div>
 
-                {/* Manual Nav Arrows (On Hover) */}
+                {/* Manual Nav Arrows (On Hover or touch) */}
                 <button
                   type="button"
                   onClick={() => setCurrentSlideIndex((prev) => (prev - 1 + slideshowList.length) % slideshowList.length)}
-                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-neutral-950/70 hover:bg-neutral-900 border border-neutral-700/80 text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10"
+                  className="absolute left-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-neutral-950/70 hover:bg-neutral-900 border border-neutral-700/80 text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10 hidden sm:flex items-center justify-center"
                   title="รูปก่อนหน้า"
                 >
                   <ChevronLeft className="w-4 h-4" />
@@ -733,14 +733,14 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                 <button
                   type="button"
                   onClick={() => setCurrentSlideIndex((prev) => (prev + 1) % slideshowList.length)}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-neutral-950/70 hover:bg-neutral-900 border border-neutral-700/80 text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-full bg-neutral-950/70 hover:bg-neutral-900 border border-neutral-700/80 text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer z-10 hidden sm:flex items-center justify-center"
                   title="รูปถัดไป"
                 >
                   <ChevronRight className="w-4 h-4" />
                 </button>
 
-                {/* Album Title & Slide Info Overlay Tag */}
-                <div className="absolute bottom-3 left-4 right-4 z-10">
+                {/* Album Title & Slide Info Overlay Tag - HIDDEN on mobile (sm:block) to prevent blocking photo */}
+                <div className="hidden sm:block absolute bottom-3 left-4 right-4 z-10">
                   <div className="flex items-center justify-between gap-2 mb-1">
                     <span className="text-[10px] font-mono text-red-400 uppercase tracking-widest font-bold bg-neutral-950/90 border border-neutral-800 px-2.5 py-0.5 rounded shadow">
                       ALBUM TRACK #{activeSong.trackNumber}
@@ -778,8 +778,42 @@ export const MusicPlayerSection: React.FC<MusicPlayerSectionProps> = ({ currentT
                     ))}
                   </div>
                 </div>
+
+                {/* Mobile Only: Clean full-width Track Info bar placed directly BELOW image/video */}
               </div>
             )}
+
+            {/* Current Playing Track Info Bar (Especially clean on Mobile so image isn't covered) */}
+            <div className="bg-neutral-950/90 border border-neutral-800 rounded-2xl p-3.5 flex items-center justify-between gap-3 shadow-md">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-[10px] font-mono font-bold text-red-400 bg-red-950/80 border border-red-800/80 px-2 py-0.5 rounded shrink-0">
+                    แทร็ก #{activeSong.trackNumber}
+                  </span>
+                  <span className="text-[11px] font-mono text-neutral-400 truncate">
+                    {activeSong.duration}
+                  </span>
+                </div>
+                <h3 className="text-base sm:text-lg font-black text-white truncate">
+                  {activeSong.titleThai}
+                </h3>
+                <p className="text-xs text-neutral-400 font-mono truncate">
+                  {activeSong.titleEng} {activeSong.featuredArtist && <span className="text-red-400 font-semibold">({activeSong.featuredArtist})</span>}
+                </p>
+              </div>
+
+              {/* Status or Quick Action */}
+              <div className="shrink-0 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => triggerUploadForSong(activeSong.id)}
+                  className="p-2 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-700 text-amber-400 text-xs font-bold transition-colors cursor-pointer"
+                  title="อัปโหลดหรือแก้ไขไฟล์ MP3 ของเพลงนี้"
+                >
+                  <Upload className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
 
             {/* Quick MV Track Switcher & Skip Ribbon (When in MV mode) */}
             {visualMode === 'mv' && (
